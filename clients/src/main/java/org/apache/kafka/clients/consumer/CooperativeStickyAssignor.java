@@ -30,7 +30,7 @@ import org.apache.kafka.common.protocol.types.Struct;
 import org.apache.kafka.common.protocol.types.Type;
 
 /**
- * A cooperative version of the {@link StickyAssignor sticky PartitionAssignor}. This follows the same (Sticky)
+ * A cooperative version of the {@link StickyAssignor sticky PartitionAssignor}. This follows the same (sticky)
  * assignment logic as {@code StickyAssignor} but allows for cooperative rebalancing and leverages the V1 Subscription's
  * {@code ownedPartitions} field rather than embedding this information in the {@link org.apache.kafka.clients.consumer.internals.ConsumerProtocol ConsumerProtocol's}
  * UserData.
@@ -43,7 +43,12 @@ import org.apache.kafka.common.protocol.types.Type;
  */
 public class CooperativeStickyAssignor extends StickyAssignor {
 
-    static final Schema COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0 = new Schema(
+    private static final int VERSION_0 = 0;
+    private static final int LATEST_VERSION = VERSION_0;
+
+    private static final String VERSION_KEY_NAME = "version";
+    private static final Schema COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0 = new Schema(
+            new Field(VERSION_KEY_NAME, Type.INT16),
             new Field(GENERATION_KEY_NAME, Type.INT32));
 
     static final class CooperativeUserData {
@@ -54,6 +59,7 @@ public class CooperativeStickyAssignor extends StickyAssignor {
 
         ByteBuffer encode() {
             Struct struct = new Struct(COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0);
+            struct.set(VERSION_KEY_NAME, LATEST_VERSION);
             struct.set(GENERATION_KEY_NAME, generation);
             ByteBuffer buffer = ByteBuffer.allocate(COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0.sizeOf(struct));
             COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0.write(buffer, struct);
