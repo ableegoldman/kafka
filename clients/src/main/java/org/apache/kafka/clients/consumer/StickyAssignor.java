@@ -190,7 +190,7 @@ public class StickyAssignor extends AbstractPartitionAssignor {
     static final String TOPIC_PARTITIONS_KEY_NAME = "previous_assignment";
     static final String TOPIC_KEY_NAME = "topic";
     static final String PARTITIONS_KEY_NAME = "partitions";
-    private static final String GENERATION_KEY_NAME = "generation";
+    static final String GENERATION_KEY_NAME = "generation";
     private static final int DEFAULT_GENERATION = -1;
     static final Schema TOPIC_ASSIGNMENT = new Schema(
             new Field(TOPIC_KEY_NAME, Type.STRING),
@@ -205,10 +205,10 @@ public class StickyAssignor extends AbstractPartitionAssignor {
     private PartitionMovements partitionMovements;
     private int generation = DEFAULT_GENERATION; // consumer group generation
 
-    static final class ConsumerUserData {
+    static final class StickyUserData {
         final List<TopicPartition> partitions;
         final Optional<Integer> generation;
-        ConsumerUserData(List<TopicPartition> partitions, Optional<Integer> generation) {
+        StickyUserData(List<TopicPartition> partitions, Optional<Integer> generation) {
             this.partitions = partitions;
             this.generation = generation;
         }
@@ -223,6 +223,7 @@ public class StickyAssignor extends AbstractPartitionAssignor {
         }
     }
 
+    @Override
     public Map<String, List<TopicPartition>> assign(Map<String, Integer> partitionsPerTopic,
                                                     Map<String, Subscription> subscriptions) {
         Map<String, List<TopicPartition>> currentAssignment = new HashMap<>();
@@ -321,23 +322,24 @@ public class StickyAssignor extends AbstractPartitionAssignor {
         Map<TopicPartition, TreeMap<Integer, String>> sortedPartitionConsumersByGeneration = new HashMap<>();
         for (Map.Entry<String, Subscription> subscriptionEntry: subscriptions.entrySet()) {
             String consumer = subscriptionEntry.getKey();
-            ByteBuffer userData = subscriptionEntry.getValue().userData();
-            if (userData == null || !userData.hasRemaining()) continue;
-            ConsumerUserData consumerUserData = deserializeTopicPartitionAssignment(userData);
 
-            for (TopicPartition partition: consumerUserData.partitions) {
+            StickyUserData stickyUserData = subscriptionToStickyUserData(subscriptionEntry.getValue());
+            if (stickyUserData == null)
+                continue;
+
+            for (TopicPartition partition: stickyUserData.partitions) {
                 if (sortedPartitionConsumersByGeneration.containsKey(partition)) {
                     Map<Integer, String> consumers = sortedPartitionConsumersByGeneration.get(partition);
-                    if (consumerUserData.generation.isPresent() && consumers.containsKey(consumerUserData.generation.get())) {
+                    if (stickyUserData.generation.isPresent() && consumers.containsKey(stickyUserData.generation.get())) {
                         // same partition is assigned to two consumers during the same rebalance.
                         // log a warning and skip this record
                         log.warn("Partition '{}' is assigned to multiple consumers following sticky assignment generation {}.",
-                                partition, consumerUserData.generation);
+                                partition, stickyUserData.generation);
                     } else
-                        consumers.put(consumerUserData.generation.orElse(DEFAULT_GENERATION), consumer);
+                        consumers.put(stickyUserData.generation.orElse(DEFAULT_GENERATION), consumer);
                 } else {
                     TreeMap<Integer, String> sortedConsumers = new TreeMap<>();
-                    sortedConsumers.put(consumerUserData.generation.orElse(DEFAULT_GENERATION), consumer);
+                    sortedConsumers.put(stickyUserData.generation.orElse(DEFAULT_GENERATION), consumer);
                     sortedPartitionConsumersByGeneration.put(partition, sortedConsumers);
                 }
             }
@@ -374,8 +376,7 @@ public class StickyAssignor extends AbstractPartitionAssignor {
         if (memberAssignment == null)
             return new Subscription(new ArrayList<>(topics));
 
-        return new Subscription(new ArrayList<>(topics),
-                serializeTopicPartitionAssignment(new ConsumerUserData(memberAssignment, Optional.of(generation))));
+        return subscriptionInternal(topics);
     }
 
     @Override
@@ -383,8 +384,27 @@ public class StickyAssignor extends AbstractPartitionAssignor {
         return "sticky";
     }
 
+    List<TopicPartition> memberAssignment() {
+        return memberAssignment;
+    }
+
     int generation() {
         return generation;
+    }
+
+    // This method may be overriden by a subclass that follows sticky assignment but encodes Subscription/UserData differently
+    StickyUserData subscriptionToStickyUserData(Subscription subscription) {
+        ByteBuffer userData = subscription.userData();
+        if (userData == null || !userData.hasRemaining())
+            return  null;
+
+        return deserializeTopicPartitionAssignment(userData);
+    }
+
+    // This method may be overriden by a subclass that encodes Subscription differently
+    Subscription subscriptionInternal(Set<String> topics) {
+        return new Subscription(new ArrayList<>(topics),
+            serializeTopicPartitionAssignment(new StickyUserData(memberAssignment, Optional.of(generation))));
     }
 
     /**
@@ -564,10 +584,10 @@ public class StickyAssignor extends AbstractPartitionAssignor {
      * The assignment should improve the overall balance of the partition assignments to consumers.
      */
     private void assignPartition(TopicPartition partition,
-                                   TreeSet<String> sortedCurrentSubscriptions,
-                                   Map<String, List<TopicPartition>> currentAssignment,
-                                   Map<String, List<TopicPartition>> consumer2AllPotentialPartitions,
-                                   Map<TopicPartition, String> currentPartitionConsumer) {
+                                 TreeSet<String> sortedCurrentSubscriptions,
+                                 Map<String, List<TopicPartition>> currentAssignment,
+                                 Map<String, List<TopicPartition>> consumer2AllPotentialPartitions,
+                                 Map<TopicPartition, String> currentPartitionConsumer) {
         for (String consumer: sortedCurrentSubscriptions) {
             if (consumer2AllPotentialPartitions.get(consumer).contains(partition)) {
                 sortedCurrentSubscriptions.remove(consumer);
@@ -777,25 +797,25 @@ public class StickyAssignor extends AbstractPartitionAssignor {
         return partitionMovements.isSticky();
     }
 
-    static ByteBuffer serializeTopicPartitionAssignment(ConsumerUserData consumerUserData) {
+    static ByteBuffer serializeTopicPartitionAssignment(StickyUserData stickyUserData) {
         Struct struct = new Struct(STICKY_ASSIGNOR_USER_DATA_V1);
         List<Struct> topicAssignments = new ArrayList<>();
-        for (Map.Entry<String, List<Integer>> topicEntry : CollectionUtils.groupPartitionsByTopic(consumerUserData.partitions).entrySet()) {
+        for (Map.Entry<String, List<Integer>> topicEntry : CollectionUtils.groupPartitionsByTopic(stickyUserData.partitions).entrySet()) {
             Struct topicAssignment = new Struct(TOPIC_ASSIGNMENT);
             topicAssignment.set(TOPIC_KEY_NAME, topicEntry.getKey());
             topicAssignment.set(PARTITIONS_KEY_NAME, topicEntry.getValue().toArray());
             topicAssignments.add(topicAssignment);
         }
         struct.set(TOPIC_PARTITIONS_KEY_NAME, topicAssignments.toArray());
-        if (consumerUserData.generation.isPresent())
-            struct.set(GENERATION_KEY_NAME, consumerUserData.generation.get());
+        if (stickyUserData.generation.isPresent())
+            struct.set(GENERATION_KEY_NAME, stickyUserData.generation.get());
         ByteBuffer buffer = ByteBuffer.allocate(STICKY_ASSIGNOR_USER_DATA_V1.sizeOf(struct));
         STICKY_ASSIGNOR_USER_DATA_V1.write(buffer, struct);
         buffer.flip();
         return buffer;
     }
 
-    private static ConsumerUserData deserializeTopicPartitionAssignment(ByteBuffer buffer) {
+    private static StickyUserData deserializeTopicPartitionAssignment(ByteBuffer buffer) {
         Struct struct;
         ByteBuffer copy = buffer.duplicate();
         try {
@@ -806,7 +826,7 @@ public class StickyAssignor extends AbstractPartitionAssignor {
                 struct = STICKY_ASSIGNOR_USER_DATA_V0.read(copy);
             } catch (Exception e2) {
                 // ignore the consumer's previous assignment if it cannot be parsed
-                return new ConsumerUserData(Collections.emptyList(), Optional.of(DEFAULT_GENERATION));
+                return new StickyUserData(Collections.emptyList(), Optional.of(DEFAULT_GENERATION));
             }
         }
 
@@ -821,7 +841,7 @@ public class StickyAssignor extends AbstractPartitionAssignor {
         }
         // make sure this is backward compatible
         Optional<Integer> generation = struct.hasField(GENERATION_KEY_NAME) ? Optional.of(struct.getInt(GENERATION_KEY_NAME)) : Optional.empty();
-        return new ConsumerUserData(partitions, generation);
+        return new StickyUserData(partitions, generation);
     }
 
     /**

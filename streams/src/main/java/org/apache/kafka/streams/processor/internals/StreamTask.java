@@ -16,6 +16,18 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
+
+/**
+ * A StreamTask is associated with a {@link PartitionGroup}, and is assigned to a StreamThread for processing.
+ */
+public class StreamTask extends AbstractTask implements ProcessorNodePunctuator {
+
+    private static final ConsumerRecord<Object, Object> DUMMY_RECORD = new ConsumerRecord<>(ProcessorContextImpl.NONEXIST_TOPIC, -1, -1L, null, null);
+
+    private final Time time;
+    private final long maxTaskIdleMs;
+    private final int maxBufferedSize;
+    private final
 import org.apache.kafka.clients.consumer.CommitFailedException;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -58,19 +70,7 @@ import java.util.concurrent.TimeUnit;
 
 import static java.lang.String.format;
 import static java.util.Collections.singleton;
-import static org.apache.kafka.streams.kstream.internals.metrics.Sensors.recordLatenessSensor;
-
-/**
- * A StreamTask is associated with a {@link PartitionGroup}, and is assigned to a StreamThread for processing.
- */
-public class StreamTask extends AbstractTask implements ProcessorNodePunctuator {
-
-    private static final ConsumerRecord<Object, Object> DUMMY_RECORD = new ConsumerRecord<>(ProcessorContextImpl.NONEXIST_TOPIC, -1, -1L, null, null);
-
-    private final Time time;
-    private final long maxTaskIdleMs;
-    private final int maxBufferedSize;
-    private final TaskMetrics taskMetrics;
+import static org.apache.kafka.streams.kstream.internals.metrics.Sensors.recordLatenessSensor;TaskMetrics taskMetrics;
     private final PartitionGroup partitionGroup;
     private final RecordCollector recordCollector;
     private final PartitionGroup.RecordInfo recordInfo;
