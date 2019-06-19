@@ -110,6 +110,11 @@ public class CooperativeStickyAssignor extends StickyAssignor {
                 return false;
             return generation == ((CooperativeUserData) obj).generation;
         }
+
+        @Override
+        public int hashCode() {
+            return generation;
+        }
     }
 
 }
