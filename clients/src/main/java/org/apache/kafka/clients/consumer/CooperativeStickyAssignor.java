@@ -26,53 +26,22 @@ import java.util.Optional;
 import java.util.Set;
 import org.apache.kafka.common.protocol.types.Field;
 import org.apache.kafka.common.protocol.types.Schema;
+import org.apache.kafka.common.protocol.types.SchemaException;
 import org.apache.kafka.common.protocol.types.Struct;
 import org.apache.kafka.common.protocol.types.Type;
 
 /**
- * A cooperative version of the {@link StickyAssignor sticky PartitionAssignor}. This follows the same (sticky)
- * assignment logic as {@code StickyAssignor} but allows for cooperative rebalancing and leverages the V1 Subscription's
- * {@code ownedPartitions} field rather than embedding this information in the {@link org.apache.kafka.clients.consumer.internals.ConsumerProtocol ConsumerProtocol's}
- * UserData.
- *
- * To turn on cooperative incremental rebalancing you must set all your consumers to use this {@code PartitionAssignor},
- * or implement a custom one that returns {@code RebalanceProtocol.COOPERATIVE} in {@link CooperativeStickyAssignor#supportedProtocols supportedProtocols()}.
- *
+ * A cooperative version of the {@link StickyAssignor StickyAssignor}. This follows the same (sticky)
+ * assignment logic as {@link StickyAssignor StickyAssignor} but allows for cooperative rebalancing. To turn on
+ * cooperative incremental rebalancing you must set all your consumers to use this {@code PartitionAssignor},
+ * or implement a custom one that returns {@code RebalanceProtocol.COOPERATIVE} in
+ * {@link CooperativeStickyAssignor#supportedProtocols supportedProtocols()}.
+ * <p>
  * IMPORTANT: if upgrading from 2.3 or earlier, you must follow a specific upgrade path in order to safely turn on
  * cooperative rebalancing. See the upgrade-guide for details
  */
 public class CooperativeStickyAssignor extends StickyAssignor {
-
-    private static final int VERSION_0 = 0;
-    private static final int LATEST_VERSION = VERSION_0;
-
-    private static final String VERSION_KEY_NAME = "version";
-    private static final Schema COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0 = new Schema(
-            new Field(VERSION_KEY_NAME, Type.INT16),
-            new Field(GENERATION_KEY_NAME, Type.INT32));
-
-    static final class CooperativeUserData {
-        final int generation;
-        CooperativeUserData(int generation) {
-            this.generation = generation;
-        }
-
-        ByteBuffer encode() {
-            Struct struct = new Struct(COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0);
-            struct.set(VERSION_KEY_NAME, LATEST_VERSION);
-            struct.set(GENERATION_KEY_NAME, generation);
-            ByteBuffer buffer = ByteBuffer.allocate(COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0.sizeOf(struct));
-            COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0.write(buffer, struct);
-
-            return buffer;
-        }
-
-        static CooperativeUserData decode(ByteBuffer buffer) {
-            Struct struct = COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0.read(buffer);
-            return new CooperativeUserData(struct.getInt(GENERATION_KEY_NAME));
-        }
-    }
-
+    
     @Override
     public List<RebalanceProtocol> supportedProtocols() {
         return Arrays.asList(RebalanceProtocol.EAGER, RebalanceProtocol.COOPERATIVE);
@@ -94,4 +63,48 @@ public class CooperativeStickyAssignor extends StickyAssignor {
         CooperativeUserData userData = decode(subscription.userData());
         return new StickyUserData(subscription.ownedPartitions(), Optional.of(userData.generation));
     }
+
+    static final class CooperativeUserData {
+
+        private static final int COOPERATIVE_USERDATA_V0 = 0;
+        private static final int LATEST_VERSION = COOPERATIVE_USERDATA_V0;
+
+        static final String VERSION_KEY_NAME = "version";
+        static final Schema COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0 = new Schema(
+            new Field(VERSION_KEY_NAME, Type.INT16),
+            new Field(GENERATION_KEY_NAME, Type.INT32));
+
+        final int generation;
+
+        CooperativeUserData(int generation) {
+            this.generation = generation;
+        }
+
+        ByteBuffer encode() {
+            Struct struct = new Struct(COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0);
+            struct.set(VERSION_KEY_NAME, LATEST_VERSION);
+            struct.set(GENERATION_KEY_NAME, generation);
+            ByteBuffer buffer = ByteBuffer.allocate(COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0.sizeOf(struct));
+            COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0.write(buffer, struct);
+
+            return buffer;
+        }
+
+        static CooperativeUserData decode(ByteBuffer buffer) {
+            Struct struct = COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0.read(buffer);
+
+            int version = struct.getInt(VERSION_KEY_NAME);
+            if (version < COOPERATIVE_USERDATA_V0)
+                throw new SchemaException("Unsupported userData version: " + version);
+            return new CooperativeUserData(struct.getInt(GENERATION_KEY_NAME));
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (!(obj instanceof CooperativeUserData))
+                return false;
+            return generation == ((CooperativeUserData) obj).generation;
+        }
+    }
+
 }
