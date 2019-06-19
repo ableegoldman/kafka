@@ -53,7 +53,7 @@ public class CooperativeStickyAssignor extends StickyAssignor {
     }
 
     @Override
-    Subscription subscriptionInternal(Set<String> topics) {
+    Subscription buildSubscription(Set<String> topics) {
         return new Subscription(
             new ArrayList<>(topics), new CooperativeUserData(generation()).encode(), memberAssignment());
     }

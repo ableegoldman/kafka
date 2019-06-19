@@ -376,7 +376,7 @@ public class StickyAssignor extends AbstractPartitionAssignor {
         if (memberAssignment == null)
             return new Subscription(new ArrayList<>(topics));
 
-        return subscriptionInternal(topics);
+        return buildSubscription(topics);
     }
 
     @Override
@@ -402,7 +402,7 @@ public class StickyAssignor extends AbstractPartitionAssignor {
     }
 
     // This method may be overriden by a subclass that encodes Subscription differently
-    Subscription subscriptionInternal(Set<String> topics) {
+    Subscription buildSubscription(Set<String> topics) {
         return new Subscription(new ArrayList<>(topics),
             serializeTopicPartitionAssignment(new StickyUserData(memberAssignment, Optional.of(generation))));
     }
