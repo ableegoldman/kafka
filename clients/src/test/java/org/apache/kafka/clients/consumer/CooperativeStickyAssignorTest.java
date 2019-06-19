@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.clients.consumer;
 
+import static org.apache.kafka.clients.consumer.CooperativeStickyAssignor.CooperativeUserData.LATEST_VERSION;
 import static org.apache.kafka.clients.consumer.CooperativeStickyAssignor.CooperativeUserData.VERSION_KEY_NAME;
 import static org.apache.kafka.clients.consumer.CooperativeStickyAssignor.CooperativeUserData.decode;
 import static org.apache.kafka.clients.consumer.StickyAssignor.GENERATION_KEY_NAME;
@@ -44,21 +45,21 @@ public class CooperativeStickyAssignorTest extends StickyAssignorTest {
     }
 
     @Test
-    public void testForwardCompatability() {
+    public void testForwardsCompatibility() {
         final Schema COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V1 = new Schema(
             new Field(VERSION_KEY_NAME, Type.INT16),
             new Field(GENERATION_KEY_NAME, Type.INT32),
-            new Field("Some new field", Type.INT32));
+            new Field("Some new field", Type.INT32, "", 0));
 
         Struct struct = new Struct(COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V1);
-        struct.set(VERSION_KEY_NAME, 2);
+        struct.set(VERSION_KEY_NAME, (short) (LATEST_VERSION + 1));
         struct.set(GENERATION_KEY_NAME, GENERATION);
         ByteBuffer buffer = ByteBuffer.allocate(COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V1.sizeOf(struct));
         COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V1.write(buffer, struct);
 
         // Make sure we can decode this as version 0
         CooperativeUserData userData = decode(buffer);
-        assertEquals(userData.generation, GENERATION);
+        assertEquals(userData.generation(), GENERATION);
     }
 
 }

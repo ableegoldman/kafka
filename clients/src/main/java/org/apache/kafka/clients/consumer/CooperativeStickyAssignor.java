@@ -41,7 +41,7 @@ import org.apache.kafka.common.protocol.types.Type;
  * cooperative rebalancing. See the upgrade-guide for details
  */
 public class CooperativeStickyAssignor extends StickyAssignor {
-    
+
     @Override
     public List<RebalanceProtocol> supportedProtocols() {
         return Arrays.asList(RebalanceProtocol.EAGER, RebalanceProtocol.COOPERATIVE);
@@ -66,18 +66,22 @@ public class CooperativeStickyAssignor extends StickyAssignor {
 
     static final class CooperativeUserData {
 
-        private static final int COOPERATIVE_USERDATA_V0 = 0;
-        private static final int LATEST_VERSION = COOPERATIVE_USERDATA_V0;
+        private static final short COOPERATIVE_USERDATA_V0 = 0;
+        static final short LATEST_VERSION = COOPERATIVE_USERDATA_V0;
 
         static final String VERSION_KEY_NAME = "version";
         static final Schema COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0 = new Schema(
             new Field(VERSION_KEY_NAME, Type.INT16),
             new Field(GENERATION_KEY_NAME, Type.INT32));
 
-        final int generation;
+        private final int generation;
 
         CooperativeUserData(int generation) {
             this.generation = generation;
+        }
+
+        public int generation() {
+            return generation;
         }
 
         ByteBuffer encode() {
@@ -91,9 +95,10 @@ public class CooperativeStickyAssignor extends StickyAssignor {
         }
 
         static CooperativeUserData decode(ByteBuffer buffer) {
+            buffer.rewind();
             Struct struct = COOPERATIVE_STICKY_ASSIGNOR_USER_DATA_V0.read(buffer);
 
-            int version = struct.getInt(VERSION_KEY_NAME);
+            short version = struct.getShort(VERSION_KEY_NAME);
             if (version < COOPERATIVE_USERDATA_V0)
                 throw new SchemaException("Unsupported userData version: " + version);
             return new CooperativeUserData(struct.getInt(GENERATION_KEY_NAME));
