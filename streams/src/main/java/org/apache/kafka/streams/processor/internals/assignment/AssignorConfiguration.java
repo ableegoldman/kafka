@@ -152,7 +152,8 @@ public final class AssignorConfiguration {
                     throw new IllegalArgumentException("Unknown configuration value for parameter 'upgrade.from': " + upgradeFrom);
             }
         }
-        return RebalanceProtocol.EAGER;
+
+        return RebalanceProtocol.COOPERATIVE;
     }
 
     public String logPrefix() {

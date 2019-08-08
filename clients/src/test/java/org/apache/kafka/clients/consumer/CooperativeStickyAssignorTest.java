@@ -36,7 +36,7 @@ public class CooperativeStickyAssignorTest extends AbstractStickyAssignorTest {
 
     @Override
     public Subscription buildSubscription(List<String> topics, List<TopicPartition> partitions) {
-        return new Subscription(topics, assignor.subscriptionUserData(new HashSet<>(topics)), partitions);
+        return new Subscription(topics, assignor.subscriptionUserData(new HashSet<>(topics), partitions), partitions);
     }
 
     /**

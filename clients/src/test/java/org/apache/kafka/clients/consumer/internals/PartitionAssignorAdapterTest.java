@@ -111,7 +111,7 @@ public class PartitionAssignorAdapterTest {
         TopicPartition tp2 = new TopicPartition("tp2", 2);
         List<TopicPartition> partitions = Arrays.asList(tp1, tp2);
 
-        adaptedAssignor.onAssignment(new Assignment(partitions), new ConsumerGroupMetadata("", 1, "", Optional.empty()));
+        adaptedAssignor.onAssignment(new Assignment(partitions), new ConsumerGroupMetadata("", 1, "", Optional.empty()), Collections.emptySet());
 
         assertEquals(oldAssignor.partitions, partitions);
     }

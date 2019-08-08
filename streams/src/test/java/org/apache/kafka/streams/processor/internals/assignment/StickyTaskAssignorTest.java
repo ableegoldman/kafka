@@ -705,7 +705,7 @@ public class StickyTaskAssignorTest {
 
     private ClientState createClientWithPreviousActiveTasks(final Integer processId, final int capacity, final TaskId... taskIds) {
         final ClientState clientState = new ClientState(capacity);
-        clientState.addPreviousActiveTasks(Utils.mkSet(taskIds));
+        clientState.addPreviousActiveTasks(Utils.mkSet(taskIds), "consumerMemberId");
         clients.put(processId, clientState);
         return clientState;
     }

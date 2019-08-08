@@ -203,7 +203,7 @@ public class KafkaStreams implements AutoCloseable {
             this.validTransitions.addAll(Arrays.asList(validTransitions));
         }
 
-        public boolean isRunning() {
+        public boolean isAlive() {
             return equals(RUNNING) || equals(REBALANCING);
         }
 
@@ -289,7 +289,7 @@ public class KafkaStreams implements AutoCloseable {
 
     private boolean isRunning() {
         synchronized (stateLock) {
-            return state.isRunning();
+            return state.isAlive();
         }
     }
 

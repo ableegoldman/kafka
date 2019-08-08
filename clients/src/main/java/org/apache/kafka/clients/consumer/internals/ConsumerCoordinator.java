@@ -209,9 +209,10 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
 
         List<String> topics = new ArrayList<>(joinedSubscription);
         for (ConsumerPartitionAssignor assignor : assignors) {
+            final List<TopicPartition> ownedPartitions = subscriptions.assignedPartitionsList();
             Subscription subscription = new Subscription(topics,
-                                                         assignor.subscriptionUserData(joinedSubscription),
-                                                         subscriptions.assignedPartitionsList());
+                                                         assignor.subscriptionUserData(joinedSubscription, ownedPartitions),
+                                                         ownedPartitions);
             ByteBuffer metadata = ConsumerProtocol.serializeSubscription(subscription);
 
             protocolSet.add(new JoinGroupRequestData.JoinGroupRequestProtocol()
@@ -349,28 +350,23 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         Set<TopicPartition> addedPartitions = new HashSet<>(assignedPartitions);
         addedPartitions.removeAll(ownedPartitions);
 
-        // Invoke user's revocation callback before changing assignment or updating state
-        if (protocol == RebalanceProtocol.COOPERATIVE) {
-            Set<TopicPartition> revokedPartitions = new HashSet<>(ownedPartitions);
-            revokedPartitions.removeAll(assignedPartitions);
+        Set<TopicPartition> revokedPartitions = new HashSet<>(ownedPartitions);
+        revokedPartitions.removeAll(assignedPartitions);
 
-            log.info("Updating with newly assigned partitions: {}, compare with already owned partitions: {}, " +
+        log.info("Updating with newly assigned partitions: {}, compare with already owned partitions: {}, " +
                     "newly added partitions: {}, revoking partitions: {}",
-                Utils.join(assignedPartitions, ", "),
-                Utils.join(ownedPartitions, ", "),
-                Utils.join(addedPartitions, ", "),
-                Utils.join(revokedPartitions, ", "));
-
-
-            if (!revokedPartitions.isEmpty()) {
-                // revoke partitions that was previously owned but no longer assigned;
-                // note that we should only change the assignment AFTER we've triggered
-                // the revoke callback
-                firstException.compareAndSet(null, invokePartitionsRevoked(revokedPartitions));
-
-                // if revoked any partitions, need to re-join the group afterwards
-                requestRejoin();
-            }
+            Utils.join(assignedPartitions, ", "),
+            Utils.join(ownedPartitions, ", "),
+            Utils.join(addedPartitions, ", "),
+            Utils.join(revokedPartitions, ", ")
+        );
+            
+        if (!revokedPartitions.isEmpty()) {
+            // revoke partitions that were previously owned but no longer assigned;
+            // note that we should only change the assignment (or update the assignor's state)
+            // AFTER we've triggered  the revoke callback
+            // This should never be called here when using eager rebalancing as everything is already revoked
+            firstException.compareAndSet(null, invokePartitionsRevoked(revokedPartitions));
         }
 
         // The leader may have assigned partitions which match our subscription pattern, but which
@@ -379,7 +375,12 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
 
         // give the assignor a chance to update internal state based on the received assignment
         ConsumerGroupMetadata metadata = new ConsumerGroupMetadata(rebalanceConfig.groupId, generation, memberId, rebalanceConfig.groupInstanceId);
-        assignor.onAssignment(assignment, metadata);
+        assignor.onAssignment(assignment, metadata, revokedPartitions);
+
+        // if revoked any partitions, need to re-join the group afterwards
+        if (!revokedPartitions.isEmpty()) {
+            requestRejoin();
+        }
 
         // reschedule the auto commit starting from now
         if (autoCommitEnabled)

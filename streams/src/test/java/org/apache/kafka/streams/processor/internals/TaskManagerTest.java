@@ -245,7 +245,7 @@ public class TaskManagerTest {
     @Test
     public void shouldCloseActiveUnAssignedSuspendedTasksWhenClosingRevokedTasks() {
         mockSingleActiveTask();
-        EasyMock.expect(active.closeNotAssignedSuspendedTasks(taskId0Assignment.keySet())).andReturn(null).once();
+        expect(active.closeNotAssignedSuspendedTasks(taskId0Assignment.keySet())).andReturn(null).once();
         expect(restoreConsumer.assignment()).andReturn(Collections.emptySet());
 
         replay();
@@ -281,6 +281,7 @@ public class TaskManagerTest {
         // Need to call this twice so task manager doesn't consider all partitions "new"
         taskManager.setAssignmentMetadata(taskId0Assignment, Collections.<TaskId, Set<TopicPartition>>emptyMap());
         taskManager.setAssignmentMetadata(taskId0Assignment, Collections.<TaskId, Set<TopicPartition>>emptyMap());
+
         taskManager.setPartitionsToTaskId(taskId0PartitionToTaskId);
         taskManager.createTasks(taskId0Partitions);
 

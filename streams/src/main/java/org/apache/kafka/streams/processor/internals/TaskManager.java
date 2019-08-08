@@ -60,6 +60,7 @@ public class TaskManager {
 
     private final Admin adminClient;
     private DeleteRecordsResult deleteRecordsResult;
+    private boolean rebalanceInProgress = false;
 
     // the restore consumer is only ever assigned changelogs from restoring tasks or standbys (but not both)
     private boolean restoreConsumerAssignedStandbys = false;
@@ -145,7 +146,7 @@ public class TaskManager {
                     addedActiveTasks.put(taskId, partitions);
                 }
             } catch (final StreamsException e) {
-                log.error("Failed to resume an active task {} due to the following error:", taskId, e);
+                log.error("Failed to resume a suspended active task {} due to the following error:", taskId, e);
                 throw e;
             }
         }
@@ -374,16 +375,22 @@ public class TaskManager {
         active.initializeNewTasks();
         standby.initializeNewTasks();
 
-        final Collection<TopicPartition> restored = changelogReader.restore(active);
-        active.updateRestored(restored);
-        removeChangelogsFromRestoreConsumer(restored, false);
+        if (!active.allTasksRunning()) {
+            final Collection<TopicPartition> restored = changelogReader.restore(active);
+            active.updateRestored(restored);
+            removeChangelogsFromRestoreConsumer(restored, false);
+        }
 
         if (active.allTasksRunning()) {
-            final Set<TopicPartition> assignment = consumer.assignment();
-            log.trace("Resuming partitions {}", assignment);
-            consumer.resume(assignment);
             assignStandbyPartitions();
-            return standby.allTasksRunning();
+
+            // Do not resume active partitions while rebalance is in progress as they may be given to another consumer
+            if (!rebalanceInProgress) {
+                final Set<TopicPartition> assignment = consumer.assignment();
+                log.trace("Resuming partitions {}", assignment);
+                consumer.resume(assignment);
+                return standby.allTasksRunning();
+            }
         }
         return false;
     }
@@ -484,6 +491,11 @@ public class TaskManager {
                 builder().updateSubscribedTopics(topics, logPrefix);
             }
         }
+    }
+
+    public void removePausedPartitions(final Collection<TopicPartition> partitions, final boolean rebalanceInProgress) {
+        this.rebalanceInProgress = rebalanceInProgress;
+        partitions.removeIf(consumer.paused()::contains);
     }
 
     /**
@@ -593,4 +605,5 @@ public class TaskManager {
     Map<TaskId, Set<TopicPartition>> assignedStandbyTasks() {
         return assignedStandbyTasks;
     }
+
 }

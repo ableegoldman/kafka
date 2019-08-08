@@ -183,6 +183,7 @@ public class AssignedStreamsTasksTest {
         EasyMock.replay(t1);
 
         assignedTasks.addNewTask(t1);
+
         assertThat(assignedTasks.suspendOrCloseTasks(assignedTasks.allAssignedTaskIds(), revokedChangelogs), nullValue());
 
         EasyMock.verify(t1);
@@ -195,6 +196,7 @@ public class AssignedStreamsTasksTest {
 
         assertThat(suspendTask(), nullValue());
         assertThat(assignedTasks.suspendOrCloseTasks(assignedTasks.allAssignedTaskIds(), revokedChangelogs), nullValue());
+
         EasyMock.verify(t1);
     }
 
@@ -537,6 +539,7 @@ public class AssignedStreamsTasksTest {
         assignedTasks.addNewTask(task);
         assignedTasks.initializeNewTasks();
         assertNull(assignedTasks.suspendOrCloseTasks(assignedTasks.allAssignedTaskIds(), revokedChangelogs));
+
 
         assignedTasks.close(true);
     }

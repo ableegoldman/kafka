@@ -79,7 +79,8 @@ public class StoreChangelogReader implements ChangelogReader {
             initialize(active);
         }
 
-        if (needsRestoring.isEmpty() || restoreConsumer.assignment().isEmpty()) {
+        if (needsRestoring.isEmpty()) {
+            log.info("Finished restoring all active tasks");
             restoreConsumer.unsubscribe();
             return completedRestorers;
         }
@@ -117,6 +118,7 @@ public class StoreChangelogReader implements ChangelogReader {
         needsRestoring.removeAll(completedRestorers);
 
         if (needsRestoring.isEmpty()) {
+            log.info("Finished restoring all active tasks");
             restoreConsumer.unsubscribe();
         }
 

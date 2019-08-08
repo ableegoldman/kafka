@@ -27,6 +27,7 @@ import org.apache.kafka.clients.consumer.ConsumerPartitionAssignor;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.Configurable;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,7 +51,7 @@ public class PartitionAssignorAdapter implements ConsumerPartitionAssignor {
     }
 
     @Override
-    public ByteBuffer subscriptionUserData(Set<String> topics) {
+    public ByteBuffer subscriptionUserData(Set<String> topics, List<TopicPartition> ownedPartitions) {
         return oldAssignor.subscription(topics).userData();
     }
 
@@ -60,7 +61,7 @@ public class PartitionAssignorAdapter implements ConsumerPartitionAssignor {
     }
 
     @Override
-    public void onAssignment(Assignment assignment, ConsumerGroupMetadata metadata) {
+    public void onAssignment(Assignment assignment, ConsumerGroupMetadata metadata, Set<TopicPartition> revokedPsrtitions) {
         oldAssignor.onAssignment(toOldAssignment(assignment), metadata.generationId());
     }
 

@@ -16,10 +16,12 @@
  */
 package org.apache.kafka.streams.tests;
 
+import java.util.Collections;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.clients.consumer.ConsumerPartitionAssignor;
+import org.apache.kafka.clients.consumer.ConsumerPartitionAssignor.RebalanceProtocol;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.PartitionInfo;
@@ -59,6 +61,8 @@ import java.util.UUID;
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.LATEST_SUPPORTED_VERSION;
 
 public class StreamsUpgradeTest {
+
+    private static final RebalanceProtocol REBALANCE_PROTOCOL = RebalanceProtocol.EAGER;
 
     @SuppressWarnings("unchecked")
     public static void main(final String[] args) throws Exception {
@@ -117,16 +121,27 @@ public class StreamsUpgradeTest {
         }
 
         @Override
-        public ByteBuffer subscriptionUserData(final Set<String> topics) {
+        public ByteBuffer subscriptionUserData(final Set<String> topics, final List<TopicPartition> ownedPartitions) {
             // Adds the following information to subscription
             // 1. Client UUID (a unique id assigned to an instance of KafkaStreams)
             // 2. Task ids of previously running tasks
             // 3. Task ids of valid local states on the client's state directory.
 
+            // In cooperative, we use the ownedPartitions encoded in the Subscription to determine the active tasks
+            // In eager, ownedPartitions will be empty so we must encode the active tasks ourselves
             final TaskManager taskManager = taskManger();
-            final Set<TaskId> previousActiveTasks = taskManager.previousRunningTaskIds();
+
+            final Set<TaskId> previousActiveTasks = REBALANCE_PROTOCOL == RebalanceProtocol.COOPERATIVE ?
+                Collections.emptySet() :
+                taskManager.previousRunningTaskIds();
+
+            // Any tasks that are not yet running are counted as standby tasks for assignment purposes, along with any old
+            // tasks for which we still found state on disk
+            taskManager.removePausedPartitions(ownedPartitions, true);
+
             final Set<TaskId> standbyTasks = taskManager.cachedTasksIds();
-            standbyTasks.removeAll(previousActiveTasks);
+            standbyTasks.removeAll(taskManager.previousRunningTaskIds());
+
             final FutureSubscriptionInfo data = new FutureSubscriptionInfo(
                 usedSubscriptionMetadataVersion,
                 LATEST_SUPPORTED_VERSION + 1,
@@ -141,9 +156,11 @@ public class StreamsUpgradeTest {
         }
 
         @Override
-        public void onAssignment(final ConsumerPartitionAssignor.Assignment assignment, final ConsumerGroupMetadata metadata) {
+        public void onAssignment(final ConsumerPartitionAssignor.Assignment assignment,
+                                 final ConsumerGroupMetadata metadata,
+                                 final Set<TopicPartition> revokedPartitions) {
             try {
-                super.onAssignment(assignment, metadata);
+                super.onAssignment(assignment, metadata, revokedPartitions);
                 return;
             } catch (final TaskAssignmentException cannotProcessFutureVersion) {
                 // continue
@@ -187,6 +204,7 @@ public class StreamsUpgradeTest {
             taskManager.setPartitionsToTaskId(partitionsToTaskId);
             taskManager.setAssignmentMetadata(activeTasks, info.standbyTasks());
             taskManager.updateSubscriptionsFromAssignment(partitions);
+            taskManager.removePausedPartitions(revokedPartitions, false);
         }
 
         @Override

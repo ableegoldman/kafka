@@ -200,13 +200,13 @@ public class StickyAssignor extends AbstractStickyAssignor {
     }
 
     @Override
-    public void onAssignment(Assignment assignment, ConsumerGroupMetadata metadata) {
+    public void onAssignment(Assignment assignment, ConsumerGroupMetadata metadata, Set<TopicPartition> revokedPartitions) {
         memberAssignment = assignment.partitions();
         this.generation = metadata.generationId();
     }
 
     @Override
-    public ByteBuffer subscriptionUserData(Set<String> topics) {
+    public ByteBuffer subscriptionUserData(Set<String> topics, final List<TopicPartition> ownedPartitions) {
         if (memberAssignment == null)
             return null;
 

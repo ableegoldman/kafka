@@ -16,6 +16,10 @@
  */
 package org.apache.kafka.streams.processor.internals.assignment;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.processor.TaskId;
 
 import java.util.HashSet;
@@ -25,9 +29,11 @@ public class ClientState {
     private final Set<TaskId> activeTasks;
     private final Set<TaskId> standbyTasks;
     private final Set<TaskId> assignedTasks;
-    private final Set<TaskId> prevActiveTasks;
+    private final Map<TaskId, String> prevActiveTasks;
     private final Set<TaskId> prevStandbyTasks;
     private final Set<TaskId> prevAssignedTasks;
+
+    private final Map<TopicPartition, String> ownedPartitions;
 
     private int capacity;
 
@@ -37,15 +43,16 @@ public class ClientState {
     }
 
     ClientState(final int capacity) {
-        this(new HashSet<>(), new HashSet<>(), new HashSet<>(), new HashSet<>(), new HashSet<>(), new HashSet<>(), capacity);
+        this(new HashSet<>(), new HashSet<>(), new HashSet<>(), new HashMap<>(), new HashSet<>(), new HashSet<>(), new HashMap<>(), capacity);
     }
 
     private ClientState(final Set<TaskId> activeTasks,
                         final Set<TaskId> standbyTasks,
                         final Set<TaskId> assignedTasks,
-                        final Set<TaskId> prevActiveTasks,
+                        final Map<TaskId, String> prevActiveTasks,
                         final Set<TaskId> prevStandbyTasks,
                         final Set<TaskId> prevAssignedTasks,
+                        final Map<TopicPartition, String> ownedPartitions,
                         final int capacity) {
         this.activeTasks = activeTasks;
         this.standbyTasks = standbyTasks;
@@ -53,6 +60,7 @@ public class ClientState {
         this.prevActiveTasks = prevActiveTasks;
         this.prevStandbyTasks = prevStandbyTasks;
         this.prevAssignedTasks = prevAssignedTasks;
+        this.ownedPartitions = ownedPartitions;
         this.capacity = capacity;
     }
 
@@ -61,9 +69,10 @@ public class ClientState {
             new HashSet<>(activeTasks),
             new HashSet<>(standbyTasks),
             new HashSet<>(assignedTasks),
-            new HashSet<>(prevActiveTasks),
+            new HashMap<>(prevActiveTasks),
             new HashSet<>(prevStandbyTasks),
             new HashSet<>(prevAssignedTasks),
+            new HashMap<>(ownedPartitions),
             capacity);
     }
 
@@ -85,12 +94,20 @@ public class ClientState {
         return standbyTasks;
     }
 
-    public Set<TaskId> prevActiveTasks() {
+    public Set<TaskId> prevActiveTaskIds() {
+        return prevActiveTasks.keySet();
+    }
+
+    public Map<TaskId, String> prevActiveTasks() {
         return prevActiveTasks;
     }
 
     public Set<TaskId> prevStandbyTasks() {
         return prevStandbyTasks;
+    }
+
+    public Map<TopicPartition, String> ownedPartitions() {
+        return ownedPartitions;
     }
 
     @SuppressWarnings("WeakerAccess")
@@ -107,14 +124,31 @@ public class ClientState {
         return activeTasks.size();
     }
 
-    public void addPreviousActiveTasks(final Set<TaskId> prevTasks) {
-        prevActiveTasks.addAll(prevTasks);
+    public void addOwnedPartitions(final List<TopicPartition> ownedPartitions, final String consumer) {
+        for (final TopicPartition tp : ownedPartitions) {
+            this.ownedPartitions.put(tp, consumer);
+        }
+    }
+
+    public void addPreviousActiveTasks(final Set<TaskId> prevTasks, final String consumer) {
+        for (final TaskId task : prevTasks) {
+            addPreviousActiveTask(task, consumer);
+        }
         prevAssignedTasks.addAll(prevTasks);
+    }
+
+    public void addPreviousActiveTask(final TaskId task, final String consumer) {
+        prevActiveTasks.put(task, consumer);
     }
 
     public void addPreviousStandbyTasks(final Set<TaskId> standbyTasks) {
         prevStandbyTasks.addAll(standbyTasks);
         prevAssignedTasks.addAll(standbyTasks);
+    }
+
+    public void removeFromAssignment(final TaskId task) {
+        activeTasks.remove(task);
+        assignedTasks.remove(task);
     }
 
     @Override
@@ -152,16 +186,6 @@ public class ClientState {
         } else {
             return capacity > other.capacity;
         }
-    }
-
-    Set<TaskId> previousStandbyTasks() {
-        final Set<TaskId> standby = new HashSet<>(prevAssignedTasks);
-        standby.removeAll(prevActiveTasks);
-        return standby;
-    }
-
-    Set<TaskId> previousActiveTasks() {
-        return prevActiveTasks;
     }
 
     boolean hasAssignedTask(final TaskId taskId) {
