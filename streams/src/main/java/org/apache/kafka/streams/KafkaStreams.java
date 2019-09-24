@@ -50,7 +50,6 @@ import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder;
 import org.apache.kafka.streams.processor.internals.ProcessorTopology;
 import org.apache.kafka.streams.processor.internals.StateDirectory;
 import org.apache.kafka.streams.processor.internals.StreamThread;
-import org.apache.kafka.streams.processor.internals.StreamThread.State;
 import org.apache.kafka.streams.processor.internals.StreamsMetadataState;
 import org.apache.kafka.streams.processor.internals.ThreadStateTransitionValidator;
 import org.apache.kafka.streams.state.HostInfo;
@@ -287,14 +286,14 @@ public class KafkaStreams implements AutoCloseable {
         return state;
     }
 
-    private boolean isRunning() {
+    private boolean isAlive() {
         synchronized (stateLock) {
             return state.isAlive();
         }
     }
 
     private void validateIsRunning() {
-        if (!isRunning()) {
+        if (!isAlive()) {
             throw new IllegalStateException("KafkaStreams is not running. State is " + state + ".");
         }
     }
@@ -943,7 +942,7 @@ public class KafkaStreams implements AutoCloseable {
      * @throws StreamsException if cleanup failed
      */
     public void cleanUp() {
-        if (isRunning()) {
+        if (isAlive()) {
             throw new IllegalStateException("Cannot clean up while running.");
         }
         stateDirectory.clean();
