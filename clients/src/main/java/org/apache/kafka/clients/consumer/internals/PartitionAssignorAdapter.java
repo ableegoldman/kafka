@@ -61,7 +61,7 @@ public class PartitionAssignorAdapter implements ConsumerPartitionAssignor {
     }
 
     @Override
-    public void onAssignment(Assignment assignment, ConsumerGroupMetadata metadata, Set<TopicPartition> revokedPsrtitions) {
+    public void onAssignment(Assignment assignment, ConsumerGroupMetadata metadata, Set<TopicPartition> revokedPartitions) {
         oldAssignor.onAssignment(toOldAssignment(assignment), metadata.generationId());
     }
 

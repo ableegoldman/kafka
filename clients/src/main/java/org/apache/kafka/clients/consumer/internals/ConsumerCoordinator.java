@@ -353,8 +353,11 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         Set<TopicPartition> revokedPartitions = new HashSet<>(ownedPartitions);
         revokedPartitions.removeAll(assignedPartitions);
 
-        log.info("Updating with newly assigned partitions: {}, compare with already owned partitions: {}, " +
-                    "newly added partitions: {}, revoking partitions: {}",
+        log.info("Updating assignment with\n" +
+                "now assigned partitions: {}\n" +
+                "compare with previously owned partitions: {}\n" +
+                "newly added partitions: {}\n" +
+                "revoked partitions: {}\n",
             Utils.join(assignedPartitions, ", "),
             Utils.join(ownedPartitions, ", "),
             Utils.join(addedPartitions, ", "),

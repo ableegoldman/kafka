@@ -372,17 +372,19 @@ public class TaskManager {
      * @throws StreamsException if the store's change log does not contain the partition
      */
     boolean updateNewAndRestoringTasks() {
-        active.initializeNewTasks();
-        standby.initializeNewTasks();
-
         if (!active.allTasksRunning()) {
+            active.initializeNewTasks();
+            standby.initializeNewTasks();
+
             final Collection<TopicPartition> restored = changelogReader.restore(active);
             active.updateRestored(restored);
             removeChangelogsFromRestoreConsumer(restored, false);
         }
 
         if (active.allTasksRunning()) {
-            assignStandbyPartitions();
+            if (!restoreConsumerAssignedStandbys) {
+                assignStandbyPartitions();
+            }
 
             // Do not resume active partitions while rebalance is in progress as they may be given to another consumer
             if (!rebalanceInProgress) {
