@@ -440,9 +440,10 @@ public class TaskManagerTest {
 
     @Test
     public void shouldResumeRestoredPartitions() {
+        expect(active.allTasksRunning()).andReturn(false).once();
         EasyMock.expect(restoreConsumer.assignment()).andReturn(taskId0Partitions).once();
         expect(changeLogReader.restore(active)).andReturn(taskId0Partitions);
-        expect(active.allTasksRunning()).andReturn(true);
+        expect(active.allTasksRunning()).andReturn(true).once();
         expect(consumer.assignment()).andReturn(taskId0Partitions);
         expect(standby.running()).andReturn(Collections.<StandbyTask>emptySet());
 
@@ -666,6 +667,7 @@ public class TaskManagerTest {
     }
 
     private void mockAssignStandbyPartitions(final long offset) {
+        expect(active.allTasksRunning()).andReturn(false).once();
         final StandbyTask task = EasyMock.createNiceMock(StandbyTask.class);
         expect(active.allTasksRunning()).andReturn(true);
         expect(standby.running()).andReturn(Collections.singletonList(task));
