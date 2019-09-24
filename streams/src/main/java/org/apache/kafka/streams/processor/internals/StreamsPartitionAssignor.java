@@ -219,32 +219,36 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
     }
 
     @Override
-
     public ByteBuffer subscriptionUserData(final Set<String> topics, final List<TopicPartition> ownedPartitions) {
         // Adds the following information to subscription
         // 1. Client UUID (a unique id assigned to an instance of KafkaStreams)
         // 2. Task ids of previously running tasks
         // 3. Task ids of valid local states on the client's state directory.
 
-        final Set<TaskId> previousRunningTaskIds = taskManager.previousRunningTaskIds();
-
-        // In cooperative, we use the ownedPartitions encoded in the Subscription to determine the active tasks.
-        // In eager, ownedPartitions will be empty so we must encode the active tasks ourselves.
-        final Set<TaskId> previousActiveTasks = rebalanceProtocol == RebalanceProtocol.COOPERATIVE ?
-            Collections.emptySet() :
-            previousRunningTaskIds;
-
         // Any tasks that are not yet running are counted as standby tasks for assignment purposes, along with any old
         // tasks for which we still found state on disk
-        taskManager.removePausedPartitions(ownedPartitions, true);
-
+        final Set<TaskId> activeTasks;
         final Set<TaskId> standbyTasks = taskManager.cachedTasksIds();
-        standbyTasks.removeAll(previousRunningTaskIds);
+
+        // In eager, onPartitionsRevoekd is called first and we must get the previously saved running task ids
+        if (rebalanceProtocol == RebalanceProtocol.EAGER) {
+            activeTasks = taskManager.previousRunningTaskIds();
+            standbyTasks.removeAll(activeTasks);
+
+        // In cooperative, we will use the encoded ownedPartitions to determine the running tasks so we do not need to
+        // encode them at all
+        } else if (rebalanceProtocol == RebalanceProtocol.COOPERATIVE) {
+            activeTasks = Collections.emptySet();
+            standbyTasks.removeAll(taskManager.runningTaskIds());
+            taskManager.removePausedPartitions(ownedPartitions, true);
+        } else {
+            throw new  IllegalStateException("Streams partition assignor has no known rebalance protocol");
+        }
 
         final SubscriptionInfo data = new SubscriptionInfo(
             usedSubscriptionMetadataVersion,
             taskManager.processId(),
-            previousActiveTasks,
+            activeTasks,
             standbyTasks,
             userEndPoint);
 
