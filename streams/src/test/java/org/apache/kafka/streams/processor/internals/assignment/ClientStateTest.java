@@ -70,8 +70,8 @@ public class ClientStateTest {
         final TaskId tid1 = new TaskId(0, 1);
         final TaskId tid2 = new TaskId(0, 2);
 
-        client.addPreviousActiveTasks(Utils.mkSet(tid1, tid2), "consumer");
-        assertThat(client.prevActiveTaskIds(), equalTo(Utils.mkSet(tid1, tid2)));
+        client.addPreviousActiveTasks(Utils.mkSet(tid1, tid2));
+        assertThat(client.prevActiveTasks(), equalTo(Utils.mkSet(tid1, tid2)));
         assertThat(client.previousAssignedTasks(), equalTo(Utils.mkSet(tid1, tid2)));
     }
 
@@ -81,7 +81,7 @@ public class ClientStateTest {
         final TaskId tid2 = new TaskId(0, 2);
 
         client.addPreviousStandbyTasks(Utils.mkSet(tid1, tid2));
-        assertThat(client.prevActiveTaskIds().size(), equalTo(0));
+        assertThat(client.prevActiveTasks().size(), equalTo(0));
         assertThat(client.previousAssignedTasks(), equalTo(Utils.mkSet(tid1, tid2)));
     }
 

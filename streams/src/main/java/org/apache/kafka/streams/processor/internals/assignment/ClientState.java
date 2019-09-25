@@ -29,7 +29,7 @@ public class ClientState {
     private final Set<TaskId> activeTasks;
     private final Set<TaskId> standbyTasks;
     private final Set<TaskId> assignedTasks;
-    private final Map<TaskId, String> prevActiveTasks;
+    private final Set<TaskId> prevActiveTasks;
     private final Set<TaskId> prevStandbyTasks;
     private final Set<TaskId> prevAssignedTasks;
 
@@ -43,13 +43,13 @@ public class ClientState {
     }
 
     ClientState(final int capacity) {
-        this(new HashSet<>(), new HashSet<>(), new HashSet<>(), new HashMap<>(), new HashSet<>(), new HashSet<>(), new HashMap<>(), capacity);
+        this(new HashSet<>(), new HashSet<>(), new HashSet<>(), new HashSet<>(), new HashSet<>(), new HashSet<>(), new HashMap<>(), capacity);
     }
 
     private ClientState(final Set<TaskId> activeTasks,
                         final Set<TaskId> standbyTasks,
                         final Set<TaskId> assignedTasks,
-                        final Map<TaskId, String> prevActiveTasks,
+                        final Set<TaskId> prevActiveTasks,
                         final Set<TaskId> prevStandbyTasks,
                         final Set<TaskId> prevAssignedTasks,
                         final Map<TopicPartition, String> ownedPartitions,
@@ -69,7 +69,7 @@ public class ClientState {
             new HashSet<>(activeTasks),
             new HashSet<>(standbyTasks),
             new HashSet<>(assignedTasks),
-            new HashMap<>(prevActiveTasks),
+            new HashSet<>(prevActiveTasks),
             new HashSet<>(prevStandbyTasks),
             new HashSet<>(prevAssignedTasks),
             new HashMap<>(ownedPartitions),
@@ -94,11 +94,7 @@ public class ClientState {
         return standbyTasks;
     }
 
-    public Set<TaskId> prevActiveTaskIds() {
-        return prevActiveTasks.keySet();
-    }
-
-    public Map<TaskId, String> prevActiveTasks() {
+    public Set<TaskId> prevActiveTasks() {
         return prevActiveTasks;
     }
 
@@ -130,15 +126,15 @@ public class ClientState {
         }
     }
 
-    public void addPreviousActiveTasks(final Set<TaskId> prevTasks, final String consumer) {
+    public void addPreviousActiveTasks(final Set<TaskId> prevTasks) {
         for (final TaskId task : prevTasks) {
-            addPreviousActiveTask(task, consumer);
+            addPreviousActiveTask(task);
         }
         prevAssignedTasks.addAll(prevTasks);
     }
 
-    public void addPreviousActiveTask(final TaskId task, final String consumer) {
-        prevActiveTasks.put(task, consumer);
+    public void addPreviousActiveTask(final TaskId task) {
+        prevActiveTasks.add(task);
     }
 
     public void addPreviousStandbyTasks(final Set<TaskId> standbyTasks) {
@@ -159,6 +155,7 @@ public class ClientState {
                 ") prevActiveTasks: (" + prevActiveTasks +
                 ") prevStandbyTasks: (" + prevStandbyTasks +
                 ") prevAssignedTasks: (" + prevAssignedTasks +
+                ") prevOwnedPartitions: (" + ownedPartitions.keySet() +
                 ") capacity: " + capacity +
                 "]";
     }

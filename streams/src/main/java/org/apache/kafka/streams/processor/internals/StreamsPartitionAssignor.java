@@ -140,7 +140,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             consumers.add(consumerMemberId);
             state.incrementCapacity();
             state.addPreviousStandbyTasks(info.standbyTasks());
-            state.addPreviousActiveTasks(info.prevTasks(), consumerMemberId);
+            state.addPreviousActiveTasks(info.prevTasks());
             state.addOwnedPartitions(ownedPartitions, consumerMemberId);
         }
 
@@ -563,7 +563,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                     final TopicPartition tp = partitionEntry.getKey();
                     final TaskId task = taskForPartition.get(tp);
                     if (task != null) {
-                        state.addPreviousActiveTask(task, partitionEntry.getValue());
+                        state.addPreviousActiveTask(task);
                     } else {
                         log.error("No task found for topic partition {}", tp);
                     }
@@ -715,7 +715,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                     continue;
                 }
 
-                final List<TaskId> activeTasks = new ArrayList<>(clientMetadata.state.prevActiveTaskIds());
+                final List<TaskId> activeTasks = new ArrayList<>(clientMetadata.state.prevActiveTasks());
 
                 final List<TopicPartition> assignedPartitions = new ArrayList<>();
                 for (final TaskId taskId : activeTasks) {

@@ -342,9 +342,10 @@ class AssignedStreamsTasks extends AssignedTasks<StreamTask> implements Restorin
     }
 
     void updateRestored(final Collection<TopicPartition> restored) {
-        if (restored.isEmpty()) {
+        if (restored.isEmpty() || allTasksRunning()) {
             return;
         }
+
         log.trace("Stream task changelog partitions that have completed restoring so far: {}", restored);
         restoredPartitions.addAll(restored);
         for (final Iterator<Map.Entry<TaskId, StreamTask>> it = restoring.entrySet().iterator(); it.hasNext(); ) {
@@ -367,6 +368,7 @@ class AssignedStreamsTasks extends AssignedTasks<StreamTask> implements Restorin
             }
         }
         if (allTasksRunning()) {
+            log.info("Finished restoring all currently assigned active tasks.");
             restoredPartitions.clear();
         }
     }
