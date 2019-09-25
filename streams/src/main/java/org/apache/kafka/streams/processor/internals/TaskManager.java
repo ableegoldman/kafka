@@ -325,6 +325,10 @@ public class TaskManager {
         return active.previousRunningTaskIds();
     }
 
+    Set<TaskId> runningTaskIds() {
+        return active.runningTaskIds();
+    }
+
     Set<TaskId> previousActiveTaskIds() {
         final HashSet<TaskId> previousActiveTasks = new HashSet<>(assignedActiveTasks.keySet());
         previousActiveTasks.addAll(revokedActiveTasks.keySet());
