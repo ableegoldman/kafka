@@ -17,7 +17,6 @@ from ducktape.utils.util import wait_until
 from ducktape.tests.test import Test
 from ducktape.mark.resource import cluster
 from ducktape.mark import matrix
-from ducktape.mark import parametrize, ignore
 from kafkatest.services.kafka import KafkaService
 from kafkatest.services.zookeeper import ZookeeperService
 from kafkatest.services.streams import StreamsSmokeTestDriverService, StreamsSmokeTestJobRunnerService
@@ -223,7 +222,6 @@ class StreamsBrokerBounceTest(Test):
 
         return self.collect_results(sleep_time_secs)
 
-    @ignore
     @cluster(num_nodes=7)
     @matrix(failure_mode=["clean_shutdown"],
             broker_type=["controller"],
