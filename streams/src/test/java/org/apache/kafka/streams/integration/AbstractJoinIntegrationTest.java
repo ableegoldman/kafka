@@ -16,9 +16,8 @@
  */
 package org.apache.kafka.streams.integration;
 
+import java.time.Instant;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.LongDeserializer;
 import org.apache.kafka.common.serialization.LongSerializer;
@@ -30,25 +29,26 @@ import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.KeyValueTimestamp;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
+import org.apache.kafka.streams.TestInputTopic;
+import org.apache.kafka.streams.TestOutputTopic;
+import org.apache.kafka.streams.TopologyTestDriver;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
 import org.apache.kafka.streams.kstream.ValueJoiner;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.QueryableStoreTypes;
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
+import org.apache.kafka.streams.test.TestRecord;
 import org.apache.kafka.test.IntegrationTest;
 import org.apache.kafka.test.TestUtils;
 import org.junit.After;
 import org.junit.BeforeClass;
-import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -57,10 +57,15 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static org.apache.kafka.test.StreamsTestUtils.startKafkaStreamsAndWaitForRunningState;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Tests all available joins of Kafka Streams DSL.
@@ -68,8 +73,8 @@ import static org.hamcrest.core.Is.is;
 @Category({IntegrationTest.class})
 @RunWith(value = Parameterized.class)
 public abstract class AbstractJoinIntegrationTest {
-    @ClassRule
-    public static final EmbeddedKafkaCluster CLUSTER = new EmbeddedKafkaCluster(1);
+
+    private final Logger log = LoggerFactory.getLogger(this.getClass());
 
     @Rule
     public final TemporaryFolder testFolder = new TemporaryFolder(TestUtils.tempDirectory());
@@ -92,11 +97,8 @@ public abstract class AbstractJoinIntegrationTest {
     static final String OUTPUT_TOPIC = "outputTopic";
     static final long ANY_UNIQUE_KEY = 0L;
 
-    private final static Properties PRODUCER_CONFIG = new Properties();
-    private final static Properties RESULT_CONSUMER_CONFIG = new Properties();
-
-    private KafkaProducer<Long, String> producer;
     private KafkaStreams streams;
+    private TopologyTestDriver topologyTestDriver;
 
     StreamsBuilder builder;
     int numRecordsExpected = 0;
@@ -132,48 +134,45 @@ public abstract class AbstractJoinIntegrationTest {
 
     @BeforeClass
     public static void setupConfigsAndUtils() {
-        PRODUCER_CONFIG.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, CLUSTER.bootstrapServers());
-        PRODUCER_CONFIG.put(ProducerConfig.ACKS_CONFIG, "all");
-        PRODUCER_CONFIG.put(ProducerConfig.RETRIES_CONFIG, 0);
-        PRODUCER_CONFIG.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, LongSerializer.class);
-        PRODUCER_CONFIG.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-
-        RESULT_CONSUMER_CONFIG.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, CLUSTER.bootstrapServers());
-        RESULT_CONSUMER_CONFIG.put(ConsumerConfig.GROUP_ID_CONFIG, appID + "-result-consumer");
-        RESULT_CONSUMER_CONFIG.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        RESULT_CONSUMER_CONFIG.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, LongDeserializer.class);
-        RESULT_CONSUMER_CONFIG.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-
         STREAMS_CONFIG.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        STREAMS_CONFIG.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, CLUSTER.bootstrapServers());
+        STREAMS_CONFIG.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy-brokers");
         STREAMS_CONFIG.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.Long().getClass());
         STREAMS_CONFIG.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         STREAMS_CONFIG.put(StreamsConfig.COMMIT_INTERVAL_MS_CONFIG, COMMIT_INTERVAL);
     }
 
-    void prepareEnvironment() throws InterruptedException {
-        CLUSTER.createTopics(INPUT_TOPIC_LEFT, INPUT_TOPIC_RIGHT, OUTPUT_TOPIC);
-
+    void prepareEnvironment() {
         if (!cacheEnabled) {
             STREAMS_CONFIG.put(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG, 0);
         }
 
         STREAMS_CONFIG.put(StreamsConfig.STATE_DIR_CONFIG, testFolder.getRoot().getPath());
-
-        producer = new KafkaProducer<>(PRODUCER_CONFIG);
     }
 
     @After
-    public void cleanup() throws InterruptedException {
-        producer.close(Duration.ofMillis(0));
-        CLUSTER.deleteAllTopicsAndWait(120000);
+    public void cleanup()  {
+        try {
+            topologyTestDriver.close();
+        } catch (final RuntimeException e) {
+            log.warn("The following exception was thrown while trying to close the TopologyTestDriver (note that " +
+                         "KAFKA-6647 causes this when running on Windows):", e);
+        }
     }
 
-    private void checkResult(final String outputTopic, final List<KeyValueTimestamp<Long, String>> expectedResult) throws InterruptedException {
-        IntegrationTestUtils.verifyKeyValueTimestamps(RESULT_CONSUMER_CONFIG, outputTopic, expectedResult);
+    private void checkResult(final String outputTopic, final List<KeyValueTimestamp<Long, String>> expectedResult) {
+        final TestOutputTopic<Long, String> testOutputTopic = topologyTestDriver.createOutputTopic(outputTopic, new LongDeserializer(), new StringDeserializer());
+
+        for (final KeyValueTimestamp<Long, String> expected : expectedResult) {
+            assertFalse(testOutputTopic.isEmpty());
+            final TestRecord<Long, String> record = testOutputTopic.readRecord();
+            assertEquals(expected.key(), record.key());
+            assertEquals(expected.value(), record.value());
+            assertEquals((Long) expected.timestamp(), record.timestamp());
+        }
+        assertTrue(testOutputTopic.isEmpty());
     }
 
-    private void checkResult(final String outputTopic, final KeyValueTimestamp<Long, String> expectedFinalResult, final int expectedTotalNumRecords) throws InterruptedException {
+    private void checkResult(final String outputTopic, final KeyValueTimestamp<Long, String> expectedFinalResult, final int expectedTotalNumRecords) {
         final List<KeyValueTimestamp<Long, String>> result =
             IntegrationTestUtils.waitUntilMinKeyValueWithTimestampRecordsReceived(RESULT_CONSUMER_CONFIG, outputTopic, expectedTotalNumRecords, 30 * 1000L);
         assertThat(result.get(result.size() - 1), is(expectedFinalResult));
@@ -187,7 +186,6 @@ public abstract class AbstractJoinIntegrationTest {
         runTest(expectedResult, null);
     }
 
-
     /*
      * Runs the actual test. Checks the result after each input record to ensure fixed processing order.
      * If an input tuple does not trigger any result, "expectedResult" should contain a "null" entry
@@ -196,39 +194,40 @@ public abstract class AbstractJoinIntegrationTest {
         assert expectedResult.size() == input.size();
 
         IntegrationTestUtils.purgeLocalStreamsState(STREAMS_CONFIG);
+
+        topologyTestDriver = new TopologyTestDriver(builder.build(STREAMS_CONFIG), STREAMS_CONFIG);
         streams = new KafkaStreams(builder.build(), STREAMS_CONFIG);
 
         KeyValueTimestamp<Long, String> expectedFinalResult = null;
 
-        try {
-            startKafkaStreamsAndWaitForRunningState(streams, TIMEOUT);
+        final long firstTimestamp = System.currentTimeMillis();
+        long ts = firstTimestamp;
 
-            final long firstTimestamp = System.currentTimeMillis();
-            long ts = firstTimestamp;
+        final Iterator<List<KeyValueTimestamp<Long, String>>> resultIterator = expectedResult.iterator();
+        for (final Input<String> singleInput : input) {
+            final TestInputTopic<Long, String> inputTopic =
+                topologyTestDriver.createInputTopic(singleInput.topic, new LongSerializer(), new StringSerializer());
+            inputTopic.pipeInput(new TestRecord<>(singleInput.record.key, singleInput.record.value, Instant.ofEpochMilli(++ts)));
 
-            final Iterator<List<KeyValueTimestamp<Long, String>>> resultIterator = expectedResult.iterator();
-            for (final Input<String> singleInput : input) {
-                producer.send(new ProducerRecord<>(singleInput.topic, null, ++ts, singleInput.record.key, singleInput.record.value)).get();
+            final List<KeyValueTimestamp<Long, String>> expected = resultIterator.next();
 
-                final List<KeyValueTimestamp<Long, String>> expected = resultIterator.next();
-
-                if (expected != null) {
-                    final List<KeyValueTimestamp<Long, String>> updatedExpected = new LinkedList<>();
-                    for (final KeyValueTimestamp<Long, String> record : expected) {
-                        updatedExpected.add(new KeyValueTimestamp<>(record.key(), record.value(), firstTimestamp + record.timestamp()));
-                    }
-
-                    checkResult(OUTPUT_TOPIC, updatedExpected);
-                    expectedFinalResult = updatedExpected.get(expected.size() - 1);
+            if (expected != null) {
+                final List<KeyValueTimestamp<Long, String>> updatedExpected = new LinkedList<>();
+                for (final KeyValueTimestamp<Long, String> record : expected) {
+                    updatedExpected.add(new KeyValueTimestamp<>(record.key(), record.value(), firstTimestamp + record.timestamp()));
                 }
+
+                checkResult(OUTPUT_TOPIC, updatedExpected);
+                expectedFinalResult = updatedExpected.get(expected.size() - 1);
             }
+
 
             if (storeName != null) {
                 checkQueryableStore(storeName, expectedFinalResult);
             }
-        } finally {
-            streams.close();
         }
+
+        streams.close();
     }
 
     /*
