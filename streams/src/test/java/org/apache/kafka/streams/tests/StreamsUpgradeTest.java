@@ -57,10 +57,14 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.LATEST_SUPPORTED_VERSION;
 
 public class StreamsUpgradeTest {
+
+    private static final Logger LOG = LoggerFactory.getLogger(StreamsUpgradeTest.class);
 
     private static final RebalanceProtocol REBALANCE_PROTOCOL = RebalanceProtocol.COOPERATIVE;
 
@@ -214,6 +218,7 @@ public class StreamsUpgradeTest {
             for (final Subscription subscription : subscriptions.values()) {
                 final SubscriptionInfo info = SubscriptionInfo.decode(subscription.userData());
                 if (info.version() < LATEST_SUPPORTED_VERSION + 1) {
+                    LOG.debug("SOPH-StreamsUpgradeTest-calling super's assign on first occasion");
                     assignment = super.assign(metadata, new GroupSubscription(subscriptions)).groupAssignment();
                     break;
                 }
@@ -242,6 +247,7 @@ public class StreamsUpgradeTest {
                                 info.userEndPoint())
                                 .encode()));
                 }
+                LOG.debug("SOPH-StreamsUpgradeTest-calling super's assign on second occasion");
                 assignment = super.assign(metadata, new GroupSubscription(downgradedSubscriptions)).groupAssignment();
                 bumpUsedVersion = true;
                 bumpSupportedVersion = true;

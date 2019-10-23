@@ -603,6 +603,9 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
      */
     private void validateCooperativeAssignment(final Map<String, List<TopicPartition>> ownedPartitions,
                                                final Map<String, Assignment> assignments) {
+        log.debug("SOPH-ownedPartitions map was: {}", ownedPartitions);
+        log.debug("SOPH-assignments map was: {}", assignments);
+
         Set<TopicPartition> totalRevokedPartitions = new HashSet<>();
         Set<TopicPartition> totalAddedPartitions = new HashSet<>();
         for (final Map.Entry<String, Assignment> entry : assignments.entrySet()) {

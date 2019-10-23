@@ -358,7 +358,9 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             // add the consumer and any info its its subscription to the client
             clientMetadata.addConsumer(consumerId, subscription.ownedPartitions());
             allOwnedPartitions.addAll(subscription.ownedPartitions());
+            log.debug("SOPH-for consumer {} adding owned partitions {}", consumerId, subscription.ownedPartitions());
             if (info.prevTasks() != null && info.standbyTasks() != null) {
+                log.debug("SOPH-for consumer {} adding prev tasks {}", consumerId, info.prevTasks());
                 clientMetadata.addPreviousTasks(info);
             }
         }
@@ -677,6 +679,8 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
         boolean rebalanceRequired = false;
         final Map<String, Assignment> assignment = new HashMap<>();
 
+        log.debug("SOPH-normal assignment!");
+
         // within the client, distribute tasks to its owned consumers
         for (final ClientMetadata clientMetadata : clientsMetadata.values()) {
             final ClientState state = clientMetadata.state;
@@ -720,7 +724,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                                                              final int minUserMetadataVersion,
                                                              final int minSupportedMetadataVersion) {
         final Map<String, Assignment> assignment = new HashMap<>();
-
+        log.debug("SOPH-version probing assignment!");
         // Since we know another rebalance will be triggered anyway, just try and generate a balanced assignment
         // (without violating cooperative protocol) now so that on the second rebalance we can just give tasks
         // back to their previous owners
