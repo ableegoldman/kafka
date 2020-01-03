@@ -17,11 +17,16 @@
 package org.apache.kafka.streams.processor.internals;
 
 import java.util.Arrays;
+import java.util.concurrent.ExecutionException;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.CreateTopicsResult;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerPartitionAssignor;
 import org.apache.kafka.clients.consumer.ConsumerPartitionAssignor.GroupSubscription;
 import org.apache.kafka.clients.consumer.ConsumerPartitionAssignor.RebalanceProtocol;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -31,6 +36,7 @@ import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.TopologyWrapper;
+import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.kstream.JoinWindows;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
@@ -1130,7 +1136,67 @@ public class StreamsPartitionAssignorTest {
                 new TopicPartition("topic1", 2)),
             topicPartitions);
     }
+    /*
+        @Test
+        public void shouldNotThrowStreamsExceptionWhenSufficientBrokersForReplicationFactor() {
+            final Short lowReplicationFactor = 1;
 
+            final Set<NewTopic> underreplicatedTopics = Collections.singleton(new NewTopic("topic", 1, lowReplicationFactor));
+
+            final Map<String, Object> props = configProps();
+            partitionAssignor.configure(props);
+
+            final AdminClient adminClient = EasyMock.createNiceMock(AdminClient.class);
+            EasyMock.expect(adminClient.createTopics(underreplicatedTopics)).andReturn(createTopicsResult).once();
+
+            taskManager = EasyMock.createNiceMock(TaskManager.class);
+            EasyMock.expect(taskManager.adminClient()).andReturn(adminClient).anyTimes();
+            EasyMock.expect(taskManager.builder()).andReturn(builder).anyTimes();
+            EasyMock.expect(taskManager.previousRunningTaskIds()).andReturn(emptyTasks).anyTimes();
+            EasyMock.expect(taskManager.activeTaskIds()).andReturn(emptyTasks).anyTimes();
+            EasyMock.expect(taskManager.cachedTasksIds()).andReturn(emptyTasks).anyTimes();
+            EasyMock.expect(taskManager.processId()).andReturn(UUID.randomUUID()).anyTimes();
+
+
+            try {
+                configurePartitionAssignor(Collections.singletonMap(StreamsConfig.APPLICATION_SERVER_CONFIG, "localhost"));
+                fail("Expected a StreamsException if unable to create topic with desired replication factor");
+            } catch (final StreamsException e) {
+                // pass
+            }
+        }
+
+        @Test
+        public void shouldThrowStreamsExceptionWhenInsufficientBrokersForReplicationFactor() {
+            final Short replicationFactor = 3;
+            final Set<NewTopic> newTopics = Collections.singleton(new NewTopic("topic", 1, replicationFactor));
+            configurePartitionAssignor(Collections.singletonMap(StreamsConfig.REPLICATION_FACTOR_CONFIG, replicationFactor));
+
+            final CreateTopicsResult createTopicsResult = EasyMock.createNiceMock(CreateTopicsResult.class);
+            final KafkaFuture<Void> valueFuture = EasyMock.createNiceMock(KafkaFuture.class);
+            EasyMock.expect(valueFuture.get()).andThrow(new ExecutionException);
+            EasyMock.expect(createTopicsResult.values()).andReturn(Collections.singletonMap("topic", valueFuture)).once();
+
+            final AdminClient adminClient = EasyMock.createNiceMock(AdminClient.class);
+            EasyMock.expect(adminClient.createTopics(newTopics)).andReturn(createTopicsResult).once();
+
+            taskManager = EasyMock.createNiceMock(TaskManager.class);
+            EasyMock.expect(taskManager.adminClient()).andReturn(adminClient).anyTimes();
+            EasyMock.expect(taskManager.builder()).andReturn(builder).anyTimes();
+            EasyMock.expect(taskManager.previousRunningTaskIds()).andReturn(emptyTasks).anyTimes();
+            EasyMock.expect(taskManager.activeTaskIds()).andReturn(emptyTasks).anyTimes();
+            EasyMock.expect(taskManager.cachedTasksIds()).andReturn(emptyTasks).anyTimes();
+            EasyMock.expect(taskManager.processId()).andReturn(UUID.randomUUID()).anyTimes();
+
+
+            try {
+                configurePartitionAssignor(Collections.singletonMap(StreamsConfig.APPLICATION_SERVER_CONFIG, "localhost"));
+                fail("Expected a StreamsException if unable to create topic with desired replication factor");
+            } catch (final StreamsException e) {
+                // pass
+            }
+        }
+    */
     @Test
     public void shouldThrowExceptionIfApplicationServerConfigIsNotHostPortPair() {
         builder.setApplicationId(applicationId);

@@ -133,7 +133,7 @@ public class InternalTopicManager {
                         createTopicResult.getValue().get();
                         topicsNotReady.remove(topicName);
                     } catch (final InterruptedException fatalException) {
-                        // this should not happen; if it ever happens it indicate a bug
+                        // this should not happen; if it ever happens it indicates a bug
                         Thread.currentThread().interrupt();
                         log.error(INTERRUPTED_ERROR_MESSAGE, fatalException);
                         throw new IllegalStateException(INTERRUPTED_ERROR_MESSAGE, fatalException);

@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.integration.utils;
 
+import java.util.Random;
 import kafka.server.KafkaConfig$;
 import kafka.server.KafkaServer;
 import kafka.utils.MockTime;
@@ -48,6 +49,7 @@ public class EmbeddedKafkaCluster extends ExternalResource {
     private static final int DEFAULT_BROKER_PORT = 0; // 0 results in a random port being selected
     private static final int TOPIC_CREATION_TIMEOUT = 30000;
     private static final int TOPIC_DELETION_TIMEOUT = 30000;
+    private final Random random = new Random();
     private EmbeddedZookeeper zookeeper = null;
     private final KafkaEmbedded[] brokers;
 
@@ -116,11 +118,18 @@ public class EmbeddedKafkaCluster extends ExternalResource {
     /**
      * Stop the Kafka cluster.
      */
-    private void stop() {
+    public void stop() {
         for (final KafkaEmbedded broker : brokers) {
             broker.stop();
         }
         zookeeper.shutdown();
+    }
+
+    /**
+     * Stops a single broker chosen randomly
+     */
+    public void killOneBroker() {
+        brokers[random.nextInt(3)].stop();
     }
 
     /**

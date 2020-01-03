@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.integration;
 
+import java.lang.Thread.UncaughtExceptionHandler;
 import kafka.log.LogConfig;
 import kafka.utils.MockTime;
 import org.apache.kafka.clients.admin.Admin;
@@ -25,12 +26,17 @@ import org.apache.kafka.clients.admin.ConfigEntry;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.config.ConfigResource;
+import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KafkaStreams.State;
+import org.apache.kafka.streams.KafkaStreams.StateListener;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
 import org.apache.kafka.streams.kstream.KStream;
@@ -216,5 +222,69 @@ public class InternalTopicIntegrationTest {
         final Properties repartitionProps = getTopicProperties(appID + "-CountWindows-repartition");
         assertEquals(LogConfig.Delete(), repartitionProps.getProperty(LogConfig.CleanupPolicyProp()));
         assertEquals(3, repartitionProps.size());
+    }
+
+    @Test
+    public void shouldThrowWhenInsufficientBrokersForReplicationFactor() {
+        final String appID = APP_ID + "-broker-down";
+        streamsProp.put(StreamsConfig.APPLICATION_ID_CONFIG, appID);
+        streamsProp.put(StreamsConfig.REPLICATION_FACTOR_CONFIG, 3);
+
+        final EmbeddedKafkaCluster cluster = new EmbeddedKafkaCluster(3);
+        try {
+            cluster.start();
+            cluster.createTopics(DEFAULT_INPUT_TOPIC);
+        } catch (InterruptedException | IOException e) {
+            throw new RuntimeException("Failed to create input topic due to ", e);
+        }
+
+        // Create a topology that requires a repartition topic to be created
+        final StreamsBuilder builder = new StreamsBuilder();
+
+        final KStream<String, String> sourceStream = builder.stream(DEFAULT_INPUT_TOPIC);
+
+        sourceStream
+            .selectKey((k, v) -> k + "-new")
+            .groupByKey()
+            .count();
+
+        final KafkaStreams streams = new KafkaStreams(builder.build(), streamsProp);
+
+        final long timeoutMs = 1000 * 60 * 5;
+        final long expectedEnd = System.currentTimeMillis() + timeoutMs;
+
+        final ExceptionHandler exceptionHandler = new ExceptionHandler();
+        exceptionHandler.setStreams(streams);
+        streams.setUncaughtExceptionHandler(exceptionHandler);
+
+        // Kill one of the brokers before we start the app
+        cluster.killOneBroker();
+        streams.start();
+
+        while (!exceptionHandler.expectedExceptionSeen) {
+            final long millisRemaining = expectedEnd - System.currentTimeMillis();
+            if (millisRemaining <= 0) {
+                assertTrue(false);
+            }
+        }
+        cluster.stop();
+    }
+
+    class ExceptionHandler implements UncaughtExceptionHandler {
+        private boolean expectedExceptionSeen = false;
+        KafkaStreams streams;
+
+        void setStreams(KafkaStreams streams) {
+            this.streams = streams;
+        }
+
+        @Override
+        public void uncaughtException(final Thread t, final Throwable e) {
+            if (!(e.getCause() instanceof InvalidReplicationFactorException)) {
+                throw new RuntimeException("Caught an unexpected exception with unexpected cause ", e.getCause());
+            }
+            expectedExceptionSeen = true;
+            streams.close();
+        }
     }
 }
