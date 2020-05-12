@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.integration.utils;
 
+import java.util.Arrays;
 import kafka.server.ConfigType;
 import kafka.server.KafkaConfig$;
 import kafka.server.KafkaServer;
@@ -297,8 +298,24 @@ public class EmbeddedKafkaCluster extends ExternalResource {
         }
     }
 
-    public void waitForRemainingTopics(final long timeoutMs, final String... topics) throws InterruptedException {
-        TestUtils.waitForCondition(new TopicsRemainingCondition(topics), timeoutMs, "Topics are not expected after " + timeoutMs + " milli seconds.");
+    public void createTopicsAndWait(final long timeoutMs, final TopicConfig... topics) throws InterruptedException {
+        final Set<String> currentTopics = new HashSet<>(JavaConverters.setAsJavaSetConverter(
+            brokers[0].kafkaServer().zkClient().getAllTopicsInCluster(false)).asJava());
+
+        for (final TopicConfig config : topics) {
+            createTopic(config.topic, config.numPartitions, config.replicationFactor);
+            currentTopics.add(config.topic);
+        }
+
+        TestUtils.waitForCondition(new TopicsRemainingCondition(currentTopics), timeoutMs, "Topics are not created after " + timeoutMs + " milli seconds.");
+    }
+
+    /**
+     * Waits for only the passed in topics to remain, excluding internal topics
+     */
+    public void waitForRemainingUserTopics(final long timeoutMs, final String... topics) throws InterruptedException {
+        final Set<String> remainingTopics = new HashSet<>(Arrays.asList(topics));
+        TestUtils.waitForCondition(new TopicsRemainingCondition(remainingTopics), timeoutMs, "Topics are not as expected after " + timeoutMs + " milli seconds.");
     }
 
     private final class TopicsDeletedCondition implements TestCondition {
@@ -314,23 +331,25 @@ public class EmbeddedKafkaCluster extends ExternalResource {
 
         @Override
         public boolean conditionMet() {
-            final Set<String> allTopics = new HashSet<>(JavaConverters.setAsJavaSetConverter(
-                brokers[0].kafkaServer().zkClient().getAllTopicsInCluster(false)).asJava());
+            final Set<String> allTopics = new HashSet<>(getAllTopicsInCluster());
             return !allTopics.removeAll(deletedTopics);
         }
     }
 
     private final class TopicsRemainingCondition implements TestCondition {
-        final Set<String> remainingTopics = new HashSet<>();
-
-        private TopicsRemainingCondition(final String... topics) {
-            Collections.addAll(remainingTopics, topics);
+        final Set<String> remainingTopics;
+        private TopicsRemainingCondition(final Set<String> remainingTopics) {
+            this.remainingTopics = remainingTopics;
         }
 
         @Override
         public boolean conditionMet() {
-            final Set<String> allTopics = JavaConverters.setAsJavaSetConverter(
-                brokers[0].kafkaServer().zkClient().getAllTopicsInCluster(false)).asJava();
+            final Set<String> allTopics = new HashSet<>();
+            for (final String topic : getAllTopicsInCluster()) {
+                if (!topic.startsWith("__")) {
+                    allTopics.add(topic);
+                }
+            }
             return allTopics.equals(remainingTopics);
         }
     }
@@ -349,5 +368,25 @@ public class EmbeddedKafkaCluster extends ExternalResource {
 
     public Set<String> getAllTopicsInCluster() {
         return JavaConverters.setAsJavaSetConverter(brokers[0].kafkaServer().zkClient().getAllTopicsInCluster(false)).asJava();
+    }
+
+    public static class TopicConfig {
+        final String topic;
+        final int numPartitions;
+        final int replicationFactor;
+
+        TopicConfig(final String topic) {
+            this(topic, 1, 1);
+        }
+
+        TopicConfig(final String topic, final int numPartitions) {
+            this(topic, numPartitions, 1);
+        }
+
+        TopicConfig(final String topic, final int numPartitions, final int replicationFactor) {
+            this.topic = topic;
+            this.numPartitions = numPartitions;
+            this.replicationFactor = replicationFactor;
+        }
     }
 }
