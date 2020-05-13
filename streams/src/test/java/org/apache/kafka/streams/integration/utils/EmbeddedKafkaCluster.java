@@ -377,18 +377,22 @@ public class EmbeddedKafkaCluster extends ExternalResource {
         final int numPartitions;
         final int replicationFactor;
 
-        TopicConfig(final String topic) {
-            this(topic, 1, 1);
-        }
-
-        TopicConfig(final String topic, final int numPartitions) {
-            this(topic, numPartitions, 1);
-        }
-
-        TopicConfig(final String topic, final int numPartitions, final int replicationFactor) {
+        private TopicConfig(final String topic, final int numPartitions, final int replicationFactor) {
             this.topic = topic;
             this.numPartitions = numPartitions;
             this.replicationFactor = replicationFactor;
+        }
+
+        public static TopicConfig createTopic(final String topic) {
+            return new TopicConfig(topic, 1, 1);
+        }
+
+        public static TopicConfig createTopic(final String topic, final int numPartitions) {
+            return new TopicConfig(topic, numPartitions, 1);
+        }
+
+        public static TopicConfig createTopic(final String topic, final int numPartitions, final int replicationFactor) {
+            return new TopicConfig(topic, numPartitions, replicationFactor);
         }
     }
 }

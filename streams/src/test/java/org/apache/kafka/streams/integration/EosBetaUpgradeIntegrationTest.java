@@ -37,6 +37,7 @@ import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.StreamsConfig.InternalConfig;
 import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
+import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster.TopicConfig;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils.StableAssignmentListener;
 import org.apache.kafka.streams.kstream.KStream;
@@ -161,8 +162,11 @@ public class EosBetaUpgradeIntegrationTest {
             applicationId + "-" + storeName + "-changelog"
         );
 
-        CLUSTER.createTopic(MULTI_PARTITION_INPUT_TOPIC, NUM_TOPIC_PARTITIONS, 1);
-        CLUSTER.createTopic(MULTI_PARTITION_OUTPUT_TOPIC, NUM_TOPIC_PARTITIONS, 1);
+        CLUSTER.createTopicsAndWait(
+            MAX_WAIT_TIME_MS,
+            TopicConfig.createTopic(MULTI_PARTITION_INPUT_TOPIC, NUM_TOPIC_PARTITIONS),
+            TopicConfig.createTopic(MULTI_PARTITION_OUTPUT_TOPIC, NUM_TOPIC_PARTITIONS)
+        );
     }
 
     @Test

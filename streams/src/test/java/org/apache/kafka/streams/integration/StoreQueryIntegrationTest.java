@@ -29,6 +29,7 @@ import org.apache.kafka.streams.StoreQueryParameters;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
+import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster.TopicConfig;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
 import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.Materialized;
@@ -63,7 +64,6 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
-
 @Category({IntegrationTest.class})
 public class StoreQueryIntegrationTest {
 
@@ -83,7 +83,7 @@ public class StoreQueryIntegrationTest {
 
     @Before
     public void before() throws InterruptedException {
-        cluster.createTopic(INPUT_TOPIC_NAME, 2, 1);
+        cluster.createTopicsAndWait(60 * 1000L, TopicConfig.createTopic(INPUT_TOPIC_NAME, 2, 1));
     }
 
     @After
