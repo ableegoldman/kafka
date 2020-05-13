@@ -285,8 +285,7 @@ public class EmbeddedKafkaCluster extends ExternalResource {
      * @param timeoutMs the max time to wait for the topics to be deleted (does not block if {@code <= 0})
      */
     public void deleteAllTopicsAndWait(final long timeoutMs) throws InterruptedException {
-        final Set<String> topics = JavaConverters.setAsJavaSetConverter(
-            brokers[0].kafkaServer().zkClient().getAllTopicsInCluster(false)).asJava();
+        final Set<String> topics = getAllTopicsInCluster();
         for (final String topic : topics) {
             try {
                 brokers[0].deleteTopic(topic);
@@ -298,9 +297,12 @@ public class EmbeddedKafkaCluster extends ExternalResource {
         }
     }
 
+    /**
+     * @param topics the topics and configs to be created
+     * @param timeoutMs the max time to wait for the topics to be deleted (does not block if {@code <= 0})
+     */
     public void createTopicsAndWait(final long timeoutMs, final TopicConfig... topics) throws InterruptedException {
-        final Set<String> currentTopics = new HashSet<>(JavaConverters.setAsJavaSetConverter(
-            brokers[0].kafkaServer().zkClient().getAllTopicsInCluster(false)).asJava());
+        final Set<String> currentTopics = getAllUserTopicsInCluster();
 
         for (final TopicConfig config : topics) {
             createTopic(config.topic, config.numPartitions, config.replicationFactor);
@@ -344,13 +346,7 @@ public class EmbeddedKafkaCluster extends ExternalResource {
 
         @Override
         public boolean conditionMet() {
-            final Set<String> allTopics = new HashSet<>();
-            for (final String topic : getAllTopicsInCluster()) {
-                if (!topic.startsWith("__")) {
-                    allTopics.add(topic);
-                }
-            }
-            return allTopics.equals(remainingTopics);
+            return getAllUserTopicsInCluster().equals(remainingTopics);
         }
     }
 
@@ -364,6 +360,12 @@ public class EmbeddedKafkaCluster extends ExternalResource {
 
     public Properties getLogConfig(final String topic) {
         return brokers[0].kafkaServer().zkClient().getEntityConfigs(ConfigType.Topic(), topic);
+    }
+
+    public Set<String> getAllUserTopicsInCluster() {
+        final Set<String> topics = new HashSet<>(getAllTopicsInCluster());
+        topics.removeIf(name -> name.startsWith("__"));
+        return topics;
     }
 
     public Set<String> getAllTopicsInCluster() {
