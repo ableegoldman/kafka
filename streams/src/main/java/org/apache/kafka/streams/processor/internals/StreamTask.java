@@ -612,42 +612,6 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
     }
 
     /**
-     * An active task is processable if its buffer contains data for all of its input
-     * source topic partitions, or if it is enforced to be processable
-     */
-    public boolean isProcessable(final long wallClockTime) {
-        if (state() == State.CLOSED) {
-            // a task is only closing / closed when 1) task manager is closing, 2) a rebalance is undergoing;
-            // in either case we can just log it and move on without notifying the thread since the consumer
-            // would soon be updated to not return any records for this task anymore.
-            log.info("Stream task {} is already in {} state, skip processing it.", id(), state());
-
-            return false;
-        }
-
-        if (partitionGroup.allPartitionsBuffered()) {
-            idleStartTimeMs = RecordQueue.UNKNOWN;
-            return true;
-        } else if (partitionGroup.numBuffered() > 0) {
-            if (idleStartTimeMs == RecordQueue.UNKNOWN) {
-                idleStartTimeMs = wallClockTime;
-            }
-
-            if (wallClockTime - idleStartTimeMs >= maxTaskIdleMs) {
-                enforcedProcessingSensor.record(1.0d, wallClockTime);
-                return true;
-            } else {
-                return false;
-            }
-        } else {
-            // there's no data in any of the topics; we should reset the enforced
-            // processing timer
-            idleStartTimeMs = RecordQueue.UNKNOWN;
-            return false;
-        }
-    }
-
-    /**
      * Process one record.
      *
      * @return true if this method processes a record, false if it does not process a record.
@@ -655,14 +619,10 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
      */
     @SuppressWarnings("unchecked")
     public boolean process(final long wallClockTime) {
-        if (!isProcessable(wallClockTime)) {
-            return false;
-        }
-
         // get the next record to process
         final StampedRecord record = partitionGroup.nextRecord(recordInfo, wallClockTime);
 
-        // if there is no record to process, return immediately
+        // if there is no record to process or we are idling waiting for some partitions, return immediately
         if (record == null) {
             return false;
         }

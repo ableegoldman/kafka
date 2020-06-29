@@ -16,6 +16,9 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
+import java.util.HashMap;
+import java.util.Map.Entry;
+import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Sensor;
@@ -57,9 +60,17 @@ public class PartitionGroup {
     private final Sensor recordLatenessSensor;
     private final PriorityQueue<RecordQueue> nonEmptyQueuesByTime;
 
+    // tracks empty-but-idling partitions: confirmed to be empty but not yet for longer than max.task.idle.ms
+    // if max.task.idle.ms is 0 (default) this will always be empty as partitions are immediately enforceable
+    private final Map<TopicPartition, Long> idlingPartitionsToLastPollMs = new HashMap<>();
+
+    // count empty-and-enforceable partitions: confirmed to be empty for at least max.task.idle.ms
+    private int enforceableEmptyPartitions = 0;
+
     private long streamTime;
-    private int totalBuffered;
-    private boolean allBuffered;
+    private long maxTaskIdleMs;
+    private int totalRecordsBuffered;
+    private boolean allPartitionsBuffered;
 
 
     static class RecordInfo {
@@ -82,8 +93,8 @@ public class PartitionGroup {
         nonEmptyQueuesByTime = new PriorityQueue<>(partitionQueues.size(), Comparator.comparingLong(RecordQueue::headRecordTimestamp));
         this.partitionQueues = partitionQueues;
         this.recordLatenessSensor = recordLatenessSensor;
-        totalBuffered = 0;
-        allBuffered = false;
+        totalRecordsBuffered = 0;
+        allPartitionsBuffered = false;
         streamTime = RecordQueue.UNKNOWN;
     }
 
@@ -105,7 +116,7 @@ public class PartitionGroup {
             final TopicPartition topicPartition = queueEntry.getKey();
             if (!newInputPartitions.contains(topicPartition)) {
                 // if partition is removed should delete its queue
-                totalBuffered -= queueEntry.getValue().size();
+                totalRecordsBuffered -= queueEntry.getValue().size();
                 queuesIterator.remove();
                 removedPartitions.add(topicPartition);
             }
@@ -115,7 +126,7 @@ public class PartitionGroup {
             partitionQueues.put(newInputPartition, recordQueueCreator.apply(newInputPartition));
         }
         nonEmptyQueuesByTime.removeIf(q -> removedPartitions.contains(q.partition()));
-        allBuffered = allBuffered && newInputPartitions.isEmpty();
+        allPartitionsBuffered = allPartitionsBuffered && newInputPartitions.isEmpty();
     }
 
     void setPartitionTime(final TopicPartition partition, final long partitionTime) {
@@ -130,41 +141,62 @@ public class PartitionGroup {
     }
 
     /**
-     * Get the next record and queue
+     * Get the next record and update the record info with the queue
      *
      * @return StampedRecord
      */
     StampedRecord nextRecord(final RecordInfo info, final long wallClockTime) {
-        StampedRecord record = null;
+        if (nonEmptyQueuesByTime.isEmpty() || canEnforceProcessing(wallClockTime)) {
+            return null;
+        }
 
         final RecordQueue queue = nonEmptyQueuesByTime.poll();
         info.queue = queue;
 
-        if (queue != null) {
-            // get the first record from this queue.
-            record = queue.poll();
+        final StampedRecord record = queue.poll();
+        --totalRecordsBuffered;
 
-            if (record != null) {
-                --totalBuffered;
+        if (queue.isEmpty()) {
+            allPartitionsBuffered = false;
+        } else {
+            nonEmptyQueuesByTime.offer(queue);
+        }
 
-                if (queue.isEmpty()) {
-                    // if a certain queue has been drained, reset the flag
-                    allBuffered = false;
-                } else {
-                    nonEmptyQueuesByTime.offer(queue);
-                }
-
-                // always update the stream-time to the record's timestamp yet to be processed if it is larger
-                if (record.timestamp > streamTime) {
-                    streamTime = record.timestamp;
-                    recordLatenessSensor.record(0, wallClockTime);
-                } else {
-                    recordLatenessSensor.record(streamTime - record.timestamp, wallClockTime);
-                }
-            }
+        // always update the stream-time to the record's timestamp yet to be processed if it is larger
+        if (record.timestamp > streamTime) {
+            streamTime = record.timestamp;
+            recordLatenessSensor.record(0, wallClockTime);
+        } else {
+            recordLatenessSensor.record(streamTime - record.timestamp, wallClockTime);
         }
 
         return record;
+    }
+
+    /**
+     * An active task is processable if its buffer contains data for all of its input source topic partitions, or
+     * we have confirmed the remaining partitions are empty and have been for at least max.task.idle.ms. Otherwise,
+     * we must idle as some seemingly-empty partitions may indeed have data that just  hasn't yet been fetched
+     */
+    private boolean canEnforceProcessing(final long wallClockTime) {
+        if (allPartitionsBuffered()) {
+            return true;
+        } else {
+            // check if any idling partitions are now enforceable
+            final Iterator<Map.Entry<TopicPartition, Long>> idlingIter = idlingPartitionsToLastPollMs.entrySet().iterator();
+            while (idlingIter.hasNext()) {
+                final Map.Entry<TopicPartition, Long> partitionEntry = idlingIter.next();
+                final long lastFetchMs = partitionEntry.getValue();
+                if (maxTaskIdleMs + lastFetchMs >= wallClockTime) {
+                    ++enforceableEmptyPartitions;
+                    idlingIter.remove();
+                }
+            }
+
+            // we can enforce processing if every partition is either non-empty or enforceable (empty for max.task.idle.ms)
+            // otherwise we must idle as some partitions may not have been fetched for at all, or are still idling
+            return nonEmptyQueuesByTime.size() + enforceableEmptyPartitions == partitionQueues.size();
+        }
     }
 
     /**
@@ -192,11 +224,11 @@ public class PartitionGroup {
             // we do not need to update the stream-time here since this task will definitely be
             // processed next, and hence the stream-time will be updated when we retrieved records by then
             if (nonEmptyQueuesByTime.size() == this.partitionQueues.size()) {
-                allBuffered = true;
+                allPartitionsBuffered = true;
             }
         }
 
-        totalBuffered += newSize - oldSize;
+        totalRecordsBuffered += newSize - oldSize;
 
         return newSize;
     }
@@ -236,11 +268,11 @@ public class PartitionGroup {
     }
 
     int numBuffered() {
-        return totalBuffered;
+        return totalRecordsBuffered;
     }
 
     boolean allPartitionsBuffered() {
-        return allBuffered;
+        return allPartitionsBuffered;
     }
 
     void clear() {
@@ -248,7 +280,7 @@ public class PartitionGroup {
             queue.clear();
         }
         nonEmptyQueuesByTime.clear();
-        totalBuffered = 0;
+        totalRecordsBuffered = 0;
         streamTime = RecordQueue.UNKNOWN;
     }
 }
