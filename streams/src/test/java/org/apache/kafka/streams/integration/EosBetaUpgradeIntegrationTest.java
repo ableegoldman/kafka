@@ -67,7 +67,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -91,8 +90,7 @@ public class EosBetaUpgradeIntegrationTest {
     @Parameterized.Parameters(name = "{0}")
     public static Collection<Boolean[]> data() {
         return Arrays.asList(new Boolean[][] {
-            {false},
-            {true}
+            {false}
         });
     }
 
@@ -110,12 +108,7 @@ public class EosBetaUpgradeIntegrationTest {
                 KeyValue.pair(KafkaStreams.State.PENDING_SHUTDOWN, KafkaStreams.State.NOT_RUNNING)
             )
         );
-    private static final List<KeyValue<KafkaStreams.State, KafkaStreams.State>> CRASH =
-        Collections.unmodifiableList(
-            Collections.singletonList(
-                KeyValue.pair(KafkaStreams.State.RUNNING, KafkaStreams.State.ERROR)
-            )
-        );
+
     private static final List<KeyValue<KafkaStreams.State, KafkaStreams.State>> CLOSE_CRASHED =
         Collections.unmodifiableList(
             Arrays.asList(
@@ -226,12 +219,9 @@ public class EosBetaUpgradeIntegrationTest {
         final List<KeyValue<KafkaStreams.State, KafkaStreams.State>> stateTransitions1 = new LinkedList<>();
         KafkaStreams streams1Alpha = null;
         KafkaStreams streams1Beta = null;
-        KafkaStreams streams1BetaTwo = null;
 
         final List<KeyValue<KafkaStreams.State, KafkaStreams.State>> stateTransitions2 = new LinkedList<>();
         KafkaStreams streams2Alpha = null;
-        KafkaStreams streams2AlphaTwo = null;
-        KafkaStreams streams2Beta = null;
 
         try {
             // phase 1: start both clients
@@ -313,21 +303,6 @@ public class EosBetaUpgradeIntegrationTest {
                     computeExpectedResult(uncommittedInputDataBeforeFirstUpgrade, new HashMap<>(committedState))
                 );
                 verifyUncommitted(expectedUncommittedResult);
-            } else {
-                final List<KeyValue<Long, Long>> uncommittedInputDataWithoutFailingKey = new LinkedList<>();
-                for (final long key : cleanKeys) {
-                    uncommittedInputDataWithoutFailingKey.addAll(prepareData(10L, 15L, key));
-                }
-                uncommittedInputDataWithoutFailingKey.addAll(
-                    prepareData(10L, 14L, potentiallyFirstFailingKey)
-                );
-                uncommittedInputDataBeforeFirstUpgrade.addAll(uncommittedInputDataWithoutFailingKey);
-                writeInputData(uncommittedInputDataWithoutFailingKey);
-
-                expectedUncommittedResult.addAll(
-                    computeExpectedResult(uncommittedInputDataWithoutFailingKey, new HashMap<>(committedState))
-                );
-                verifyUncommitted(expectedUncommittedResult);
             }
 
             // phase 4: (stop/crash first client)
@@ -350,13 +325,6 @@ public class EosBetaUpgradeIntegrationTest {
                 stateTransitions1.clear();
                 streams1Alpha.close();
                 waitForStateTransition(stateTransitions1, CLOSE);
-            } else {
-                errorInjectedClient1.set(true);
-
-                final List<KeyValue<Long, Long>> dataPotentiallyFirstFailingKey =
-                    prepareData(14L, 15L, potentiallyFirstFailingKey);
-                uncommittedInputDataBeforeFirstUpgrade.addAll(dataPotentiallyFirstFailingKey);
-                writeInputData(dataPotentiallyFirstFailingKey);
             }
             assignmentListener.waitForNextStableAssignment(MAX_WAIT_TIME_MS);
             waitForRunning(stateTransitions2);
@@ -371,22 +339,7 @@ public class EosBetaUpgradeIntegrationTest {
                 final List<KeyValue<Long, Long>> expectedCommittedResult =
                     computeExpectedResult(committedInputDataDuringFirstUpgrade, committedState);
                 verifyCommitted(expectedCommittedResult);
-            } else {
-                // retrying TX
-                expectedUncommittedResult.addAll(computeExpectedResult(
-                    uncommittedInputDataBeforeFirstUpgrade
-                        .stream()
-                        .filter(pair -> keyFilterFirstClient.contains(pair.key))
-                        .collect(Collectors.toList()),
-                    new HashMap<>(committedState)
-                ));
-                verifyUncommitted(expectedUncommittedResult);
-
-                errorInjectedClient1.set(false);
-                stateTransitions1.clear();
-                streams1Alpha.close();
-                waitForStateTransition(stateTransitions1, CLOSE_CRASHED);
-            }
+            } 
 
             // phase 5: (restart first client)
             // expected end state per output partition (C == COMMIT; A == ABORT; ---> indicate the changes):
@@ -426,361 +379,7 @@ public class EosBetaUpgradeIntegrationTest {
             );
             verifyCommitted(expectedCommittedResultAfterRestartFirstClient);
 
-            // phase 6: (complete second batch of data; crash: let second client fail on commit)
-            // expected end state per output partition (C == COMMIT; A == ABORT; ---> indicate the changes):
-            //
-            // stop case:
-            //   p-0: 10 rec + C + 5 rec + C ---> 5 rec + C
-            //   p-1: 10 rec + C + 5 rec + C ---> 5 rec + C
-            //   p-2: 10 rec + C + 5 rec + C ---> 5 rec + C
-            //   p-3: 10 rec + C + 5 rec + C ---> 5 rec + C
-            // crash case:
-            //   p-0: 10 rec + C + 4 rec + A + 5 rec + C ---> 5 rec + C
-            //   p-1: 10 rec + C + 5 rec + A + 5 rec + C ---> 5 rec + C
-            //   p-2: 10 rec + C + 5 rec + C ---> 5 rec + A + 5 rec + C
-            //   p-3: 10 rec + C + 5 rec + C ---> 5 rec + A + 5 rec + C
-            commitCounterClient1.set(0);
 
-            if (!injectError) {
-                final List<KeyValue<Long, Long>> committedInputDataDuringUpgrade =
-                    prepareData(15L, 20L, 0L, 1L, 2L, 3L);
-                writeInputData(committedInputDataDuringUpgrade);
-
-                final List<KeyValue<Long, Long>> expectedCommittedResult =
-                    computeExpectedResult(committedInputDataDuringUpgrade, committedState);
-                verifyCommitted(expectedCommittedResult);
-                expectedUncommittedResult.addAll(expectedCommittedResult);
-            } else {
-                final Set<Long> keysFirstClient = keysFromInstance(streams1Beta);
-                final Set<Long> keysSecondClient = keysFromInstance(streams2Alpha);
-
-                final List<KeyValue<Long, Long>> committedInputDataAfterFirstUpgrade =
-                    prepareData(15L, 20L, keysFirstClient.toArray(new Long[0]));
-                writeInputData(committedInputDataAfterFirstUpgrade);
-
-                final List<KeyValue<Long, Long>> expectedCommittedResultBeforeFailure =
-                    computeExpectedResult(committedInputDataAfterFirstUpgrade, committedState);
-                verifyCommitted(expectedCommittedResultBeforeFailure);
-                expectedUncommittedResult.addAll(expectedCommittedResultBeforeFailure);
-
-                commitCounterClient2.set(0);
-
-                final Iterator<Long> it = keysSecondClient.iterator();
-                final Long otherKey = it.next();
-                final Long failingKey = it.next();
-
-                final List<KeyValue<Long, Long>> uncommittedInputDataAfterFirstUpgrade =
-                    prepareData(15L, 19L, keysSecondClient.toArray(new Long[0]));
-                uncommittedInputDataAfterFirstUpgrade.addAll(prepareData(19L, 20L, otherKey));
-                writeInputData(uncommittedInputDataAfterFirstUpgrade);
-
-                final Map<Long, Long> uncommittedState = new HashMap<>(committedState);
-                expectedUncommittedResult.addAll(
-                    computeExpectedResult(uncommittedInputDataAfterFirstUpgrade, uncommittedState)
-                );
-                verifyUncommitted(expectedUncommittedResult);
-
-                stateTransitions1.clear();
-                stateTransitions2.clear();
-                assignmentListener.prepareForRebalance();
-
-                commitCounterClient1.set(0);
-                commitErrorInjectedClient2.set(true);
-
-                final List<KeyValue<Long, Long>> dataFailingKey = prepareData(19L, 20L, failingKey);
-                uncommittedInputDataAfterFirstUpgrade.addAll(dataFailingKey);
-                writeInputData(dataFailingKey);
-
-                expectedUncommittedResult.addAll(
-                    computeExpectedResult(dataFailingKey, uncommittedState)
-                );
-                verifyUncommitted(expectedUncommittedResult);
-
-                assignmentListener.waitForNextStableAssignment(MAX_WAIT_TIME_MS);
-
-                waitForStateTransition(stateTransitions2, CRASH);
-
-                commitErrorInjectedClient2.set(false);
-                stateTransitions2.clear();
-                streams2Alpha.close();
-                waitForStateTransition(stateTransitions2, CLOSE_CRASHED);
-
-                final List<KeyValue<Long, Long>> expectedCommittedResultAfterFailure =
-                    computeExpectedResult(uncommittedInputDataAfterFirstUpgrade, committedState);
-                verifyCommitted(expectedCommittedResultAfterFailure);
-                expectedUncommittedResult.addAll(expectedCommittedResultAfterFailure);
-            }
-
-            // 7. only for crash case:
-            //     7a. restart the second client in eos-alpha mode and wait until rebalance stabilizes
-            //     7b. write third batch of input data
-            //         * fail the first (i.e., eos-beta) client during commit
-            //         * the eos-alpha client should not pickup the pending offsets
-            //         * verify uncommitted and committed result
-            //     7c. restart the first client in eos-beta mode and wait until rebalance stabilizes
-            //
-            // crash case:
-            //   p-0: 10 rec + C + 4 rec + A + 5 rec + C + 5 rec + C ---> 10 rec + A + 10 rec + C
-            //   p-1: 10 rec + C + 5 rec + A + 5 rec + C + 5 rec + C ---> 10 rec + A + 10 rec + C
-            //   p-2: 10 rec + C + 5 rec + C + 5 rec + A + 5 rec + C ---> 10 rec + C
-            //   p-3: 10 rec + C + 5 rec + C + 5 rec + A + 5 rec + C ---> 10 rec + C
-            if (!injectError) {
-                streams2AlphaTwo = streams2Alpha;
-            } else {
-                // 7a restart the second client in eos-alpha mode and wait until rebalance stabilizes
-                commitCounterClient1.set(0);
-                commitCounterClient2.set(-1);
-                stateTransitions1.clear();
-                stateTransitions2.clear();
-                streams2AlphaTwo = getKafkaStreams("appDir2", StreamsConfig.EXACTLY_ONCE);
-                streams2AlphaTwo.setStateListener(
-                    (newState, oldState) -> stateTransitions2.add(KeyValue.pair(oldState, newState))
-                );
-                assignmentListener.prepareForRebalance();
-                streams2AlphaTwo.start();
-                assignmentListener.waitForNextStableAssignment(MAX_WAIT_TIME_MS);
-                waitForRunning(stateTransitions1);
-                waitForRunning(stateTransitions2);
-
-                // 7b. write third batch of input data
-                final Set<Long> keysFirstClient = keysFromInstance(streams1Beta);
-                final Set<Long> keysSecondClient = keysFromInstance(streams2AlphaTwo);
-
-                final List<KeyValue<Long, Long>> committedInputDataBetweenUpgrades =
-                    prepareData(20L, 30L, keysSecondClient.toArray(new Long[0]));
-                writeInputData(committedInputDataBetweenUpgrades);
-
-                final List<KeyValue<Long, Long>> expectedCommittedResultBeforeFailure =
-                    computeExpectedResult(committedInputDataBetweenUpgrades, committedState);
-                verifyCommitted(expectedCommittedResultBeforeFailure);
-                expectedUncommittedResult.addAll(expectedCommittedResultBeforeFailure);
-
-                commitCounterClient2.set(0);
-
-                final Iterator<Long> it = keysFirstClient.iterator();
-                final Long otherKey = it.next();
-                final Long failingKey = it.next();
-
-                final List<KeyValue<Long, Long>> uncommittedInputDataBetweenUpgrade =
-                    prepareData(20L, 29L, keysFirstClient.toArray(new Long[0]));
-                uncommittedInputDataBetweenUpgrade.addAll(prepareData(29L, 30L, otherKey));
-                writeInputData(uncommittedInputDataBetweenUpgrade);
-
-                final Map<Long, Long> uncommittedState = new HashMap<>(committedState);
-                expectedUncommittedResult.addAll(
-                    computeExpectedResult(uncommittedInputDataBetweenUpgrade, uncommittedState)
-                );
-                verifyUncommitted(expectedUncommittedResult);
-
-                stateTransitions1.clear();
-                stateTransitions2.clear();
-                assignmentListener.prepareForRebalance();
-                commitCounterClient2.set(0);
-                commitErrorInjectedClient1.set(true);
-
-                final List<KeyValue<Long, Long>> dataFailingKey = prepareData(29L, 30L, failingKey);
-                uncommittedInputDataBetweenUpgrade.addAll(dataFailingKey);
-                writeInputData(dataFailingKey);
-
-                expectedUncommittedResult.addAll(
-                    computeExpectedResult(dataFailingKey, uncommittedState)
-                );
-                verifyUncommitted(expectedUncommittedResult);
-
-                assignmentListener.waitForNextStableAssignment(MAX_WAIT_TIME_MS);
-                waitForStateTransition(stateTransitions1, CRASH);
-
-                commitErrorInjectedClient1.set(false);
-                stateTransitions1.clear();
-                streams1Beta.close();
-                waitForStateTransition(stateTransitions1, CLOSE_CRASHED);
-
-                final List<KeyValue<Long, Long>> expectedCommittedResultAfterFailure =
-                    computeExpectedResult(uncommittedInputDataBetweenUpgrade, committedState);
-                verifyCommitted(expectedCommittedResultAfterFailure);
-                expectedUncommittedResult.addAll(expectedCommittedResultAfterFailure);
-
-                // 7c. restart the first client in eos-beta mode and wait until rebalance stabilizes
-                stateTransitions1.clear();
-                stateTransitions2.clear();
-                streams1BetaTwo = getKafkaStreams("appDir1", StreamsConfig.EXACTLY_ONCE_BETA);
-                streams1BetaTwo.setStateListener((newState, oldState) -> stateTransitions1.add(KeyValue.pair(oldState, newState)));
-                assignmentListener.prepareForRebalance();
-                streams1BetaTwo.start();
-                assignmentListener.waitForNextStableAssignment(MAX_WAIT_TIME_MS);
-                waitForRunning(stateTransitions1);
-                waitForRunning(stateTransitions2);
-            }
-
-            // phase 8: (write partial fourth batch of data)
-            // expected end state per output partition (C == COMMIT; A == ABORT; ---> indicate the changes):
-            //
-            // stop case:
-            //   p-0: 10 rec + C + 5 rec + C + 5 rec + C ---> 5 rec (pending)
-            //   p-1: 10 rec + C + 5 rec + C + 5 rec + C ---> 5 rec (pending)
-            //   p-2: 10 rec + C + 5 rec + C + 5 rec + C ---> 5 rec (pending)
-            //   p-3: 10 rec + C + 5 rec + C + 5 rec + C ---> 5 rec (pending)
-            // crash case:  (we just assumes that we inject the error for p-2; in reality it might be a different partition)
-            //   p-0: 10 rec + C + 4 rec + A + 5 rec + C + 5 rec + C + 10 rec + A + 10 rec + C ---> 5 rec (pending)
-            //   p-1: 10 rec + C + 5 rec + A + 5 rec + C + 5 rec + C + 10 rec + A + 10 rec + C ---> 5 rec (pending)
-            //   p-2: 10 rec + C + 5 rec + C + 5 rec + A + 5 rec + C + 10 rec + C ---> 4 rec (pending)
-            //   p-3: 10 rec + C + 5 rec + C + 5 rec + A + 5 rec + C + 10 rec + C ---> 5 rec (pending)
-            cleanKeys.addAll(mkSet(0L, 1L, 2L, 3L));
-            final Set<Long> keyFilterSecondClient = keysFromInstance(streams2AlphaTwo);
-            final long potentiallySecondFailingKey = keyFilterSecondClient.iterator().next();
-            cleanKeys.remove(potentiallySecondFailingKey);
-
-            final List<KeyValue<Long, Long>> uncommittedInputDataBeforeSecondUpgrade = new LinkedList<>();
-            if (!injectError) {
-                uncommittedInputDataBeforeSecondUpgrade.addAll(
-                    prepareData(30L, 35L, 0L, 1L, 2L, 3L)
-                );
-                writeInputData(uncommittedInputDataBeforeSecondUpgrade);
-
-                expectedUncommittedResult.addAll(
-                    computeExpectedResult(uncommittedInputDataBeforeSecondUpgrade, new HashMap<>(committedState))
-                );
-                verifyUncommitted(expectedUncommittedResult);
-            } else {
-                final List<KeyValue<Long, Long>> uncommittedInputDataWithoutFailingKey = new LinkedList<>();
-                for (final long key : cleanKeys) {
-                    uncommittedInputDataWithoutFailingKey.addAll(prepareData(30L, 35L, key));
-                }
-                uncommittedInputDataWithoutFailingKey.addAll(
-                    prepareData(30L, 34L, potentiallySecondFailingKey)
-                );
-                uncommittedInputDataBeforeSecondUpgrade.addAll(uncommittedInputDataWithoutFailingKey);
-                writeInputData(uncommittedInputDataWithoutFailingKey);
-
-                expectedUncommittedResult.addAll(
-                    computeExpectedResult(uncommittedInputDataWithoutFailingKey, new HashMap<>(committedState))
-                );
-                verifyUncommitted(expectedUncommittedResult);
-            }
-
-            // phase 9: (stop/crash second client)
-            // expected end state per output partition (C == COMMIT; A == ABORT; ---> indicate the changes):
-            //
-            // stop case:
-            //   p-0: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec (pending)
-            //   p-1: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec (pending)
-            //   p-2: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec ---> C
-            //   p-3: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec ---> C
-            // crash case:  (we just assumes that we inject the error for p-2; in reality it might be a different partition)
-            //   p-0: 10 rec + C + 4 rec + A + 5 rec + C + 5 rec + C + 10 rec + A + 10 rec + C + 5 rec (pending)
-            //   p-1: 10 rec + C + 5 rec + A + 5 rec + C + 5 rec + C + 10 rec + A + 10 rec + C + 5 rec (pending)
-            //   p-2: 10 rec + C + 5 rec + C + 5 rec + A + 5 rec + C + 10 rec + C + 4 rec ---> A + 5 rec (pending)
-            //   p-3: 10 rec + C + 5 rec + C + 5 rec + A + 5 rec + C + 10 rec + C + 5 rec ---> A + 5 rec (pending)
-            stateTransitions1.clear();
-            assignmentListener.prepareForRebalance();
-            if (!injectError) {
-                stateTransitions2.clear();
-                streams2AlphaTwo.close();
-                waitForStateTransition(stateTransitions2, CLOSE);
-            } else {
-                errorInjectedClient2.set(true);
-
-                final List<KeyValue<Long, Long>> dataPotentiallySecondFailingKey =
-                    prepareData(34L, 35L, potentiallySecondFailingKey);
-                uncommittedInputDataBeforeSecondUpgrade.addAll(dataPotentiallySecondFailingKey);
-                writeInputData(dataPotentiallySecondFailingKey);
-            }
-            assignmentListener.waitForNextStableAssignment(MAX_WAIT_TIME_MS);
-            waitForRunning(stateTransitions1);
-
-            if (!injectError) {
-                final List<KeyValue<Long, Long>> committedInputDataDuringSecondUpgrade =
-                    uncommittedInputDataBeforeSecondUpgrade
-                        .stream()
-                        .filter(pair -> keyFilterSecondClient.contains(pair.key))
-                        .collect(Collectors.toList());
-
-                final List<KeyValue<Long, Long>> expectedCommittedResult =
-                    computeExpectedResult(committedInputDataDuringSecondUpgrade, committedState);
-                verifyCommitted(expectedCommittedResult);
-            } else {
-                // retrying TX
-                expectedUncommittedResult.addAll(computeExpectedResult(
-                    uncommittedInputDataBeforeSecondUpgrade
-                        .stream()
-                        .filter(pair -> keyFilterSecondClient.contains(pair.key))
-                        .collect(Collectors.toList()),
-                    new HashMap<>(committedState)
-                ));
-                verifyUncommitted(expectedUncommittedResult);
-
-                errorInjectedClient2.set(false);
-                stateTransitions2.clear();
-                streams2AlphaTwo.close();
-                waitForStateTransition(stateTransitions2, CLOSE_CRASHED);
-            }
-
-            // phase 10: (restart second client)
-            // expected end state per output partition (C == COMMIT; A == ABORT; ---> indicate the changes):
-            //
-            // the state below indicate the case for which the "original" tasks of client2 are migrated back to client2
-            // if a task "switch" happens, we might get additional commits (omitted in the comment for brevity)
-            //
-            // stop case:
-            //   p-0: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec ---> C
-            //   p-1: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec ---> C
-            //   p-2: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec + C
-            //   p-3: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec + C
-            // crash case:  (we just assumes that we inject the error for p-2; in reality it might be a different partition)
-            //   p-0: 10 rec + C + 4 rec + A + 5 rec + C + 5 rec + C + 10 rec + A + 10 rec + C + 5 rec ---> C
-            //   p-1: 10 rec + C + 5 rec + A + 5 rec + C + 5 rec + C + 10 rec + A + 10 rec + C + 5 rec ---> C
-            //   p-2: 10 rec + C + 5 rec + C + 5 rec + A + 5 rec + C + 10 rec + C + 4 rec + A + 5 rec ---> C
-            //   p-3: 10 rec + C + 5 rec + C + 5 rec + A + 5 rec + C + 10 rec + C + 5 rec + A + 5 rec ---> C
-            commitRequested.set(0);
-            stateTransitions1.clear();
-            stateTransitions2.clear();
-            streams2Beta = getKafkaStreams("appDir1", StreamsConfig.EXACTLY_ONCE_BETA);
-            streams2Beta.setStateListener(
-                (newState, oldState) -> stateTransitions2.add(KeyValue.pair(oldState, newState))
-            );
-            assignmentListener.prepareForRebalance();
-            streams2Beta.start();
-            assignmentListener.waitForNextStableAssignment(MAX_WAIT_TIME_MS);
-            waitForRunning(stateTransitions1);
-            waitForRunning(stateTransitions2);
-
-            committedKeys.addAll(mkSet(0L, 1L, 2L, 3L));
-            if (!injectError) {
-                committedKeys.removeAll(keyFilterSecondClient);
-            }
-
-            final List<KeyValue<Long, Long>> expectedCommittedResultAfterRestartSecondClient = computeExpectedResult(
-                uncommittedInputDataBeforeSecondUpgrade
-                    .stream()
-                    .filter(pair -> committedKeys.contains(pair.key))
-                    .collect(Collectors.toList()),
-                committedState
-            );
-            verifyCommitted(expectedCommittedResultAfterRestartSecondClient);
-
-            // phase 11: (complete fourth batch of data)
-            // expected end state per output partition (C == COMMIT; A == ABORT; ---> indicate the changes):
-            //
-            // stop case:
-            //   p-0: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec + C ---> 5 rec + C
-            //   p-1: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec + C ---> 5 rec + C
-            //   p-2: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec + C ---> 5 rec + C
-            //   p-3: 10 rec + C + 5 rec + C + 5 rec + C + 5 rec + C ---> 5 rec + C
-            // crash case:  (we just assumes that we inject the error for p-2; in reality it might be a different partition)
-            //   p-0: 10 rec + C + 4 rec + A + 5 rec + C + 5 rec + C + 10 rec + A + 10 rec + C + 5 rec + C ---> 5 rec + C
-            //   p-1: 10 rec + C + 5 rec + A + 5 rec + C + 5 rec + C + 10 rec + A + 10 rec + C + 5 rec + C ---> 5 rec + C
-            //   p-2: 10 rec + C + 5 rec + C + 5 rec + A + 5 rec + C + 10 rec + C + 4 rec + A + 5 rec + C ---> 5 rec + C
-            //   p-3: 10 rec + C + 5 rec + C + 5 rec + A + 5 rec + C + 10 rec + C + 5 rec + A + 5 rec + C ---> 5 rec + C
-            commitCounterClient1.set(-1);
-            commitCounterClient2.set(-1);
-
-            final List<KeyValue<Long, Long>> committedInputDataAfterUpgrade =
-                prepareData(35L, 40L, 0L, 1L, 2L, 3L);
-            writeInputData(committedInputDataAfterUpgrade);
-
-            final List<KeyValue<Long, Long>> expectedCommittedResult =
-                computeExpectedResult(committedInputDataAfterUpgrade, committedState);
-            verifyCommitted(expectedCommittedResult);
         } finally {
             if (streams1Alpha != null) {
                 streams1Alpha.close();
@@ -788,17 +387,9 @@ public class EosBetaUpgradeIntegrationTest {
             if (streams1Beta != null) {
                 streams1Beta.close();
             }
-            if (streams1BetaTwo != null) {
-                streams1BetaTwo.close();
-            }
+
             if (streams2Alpha != null) {
                 streams2Alpha.close();
-            }
-            if (streams2AlphaTwo != null) {
-                streams2AlphaTwo.close();
-            }
-            if (streams2Beta != null) {
-                streams2Beta.close();
             }
         }
     }

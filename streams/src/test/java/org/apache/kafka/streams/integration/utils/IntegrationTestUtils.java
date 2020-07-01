@@ -586,7 +586,7 @@ public class IntegrationTestUtils {
                                                                                   final long waitTime) throws Exception {
         final List<KeyValue<K, V>> accumData = new ArrayList<>();
         final String reason = String.format(
-            "Did not receive all %d records from topic %s within %d ms",
+            "Did not receive all %d records from topic %s within %d ms + \n",
             expectedNumRecords,
             topic,
             waitTime
@@ -596,7 +596,7 @@ public class IntegrationTestUtils {
                 final List<KeyValue<K, V>> readData =
                     readKeyValues(topic, consumer, waitTime, expectedNumRecords);
                 accumData.addAll(readData);
-                assertThat(reason + ",  currently accumulated data is " + accumData, accumData.size(), is(greaterThanOrEqualTo(expectedNumRecords)));
+                assertThat(reason + ", currently accumulated data is " + accumData, accumData.size(), is(greaterThanOrEqualTo(expectedNumRecords)));
             });
         }
         return accumData;
@@ -1139,14 +1139,14 @@ public class IntegrationTestUtils {
     private static <K, V> List<ConsumerRecord<K, V>> readRecords(final String topic,
                                                                  final Consumer<K, V> consumer,
                                                                  final long waitTime,
-                                                                 final int maxMessages) {
+                                                                 final int minMessages) {
         final List<ConsumerRecord<K, V>> consumerRecords;
         consumer.subscribe(Collections.singletonList(topic));
         final int pollIntervalMs = 100;
         consumerRecords = new ArrayList<>();
         int totalPollTimeMs = 0;
         while (totalPollTimeMs < waitTime &&
-            continueConsuming(consumerRecords.size(), maxMessages)) {
+            continueConsuming(consumerRecords.size(), minMessages)) {
             totalPollTimeMs += pollIntervalMs;
             final ConsumerRecords<K, V> records = consumer.poll(Duration.ofMillis(pollIntervalMs));
 
