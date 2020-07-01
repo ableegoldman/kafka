@@ -480,7 +480,7 @@ public class TaskManager {
             prepareCommitAndAddOffsetsToMap(additionalTasksForCommitting, consumedOffsetsAndMetadataPerTask);
         }
 
-        log.info("EOSTEST: committing offsets/transaction for revoked tasks = {}", revokedTasks);
+        log.info("EOSTEST: committing offsets/transaction for revoked tasks = {}", revokedTasks.stream().map(Task::id).collect(Collectors.toSet()));
         commitOffsetsOrTransaction(consumedOffsetsAndMetadataPerTask);
         log.info("EOSTEST: committed offsets during revocation: {}", consumedOffsetsAndMetadataPerTask);
 
@@ -774,7 +774,8 @@ public class TaskManager {
             tasksToCloseDirty.addAll(tasksToCommit);
         } else {
             try {
-                log.info("EOSTEST: active task shutdown, tasksToCommit: {}", tasksToCommit);
+                log.info("EOSTEST: active task shutdown, tasksToCommit: {}", tasksToCommit.stream().map(Task::id).collect(Collectors.toSet()));
+                log.info("EOSTEST: active task shutdown, tasksToCloseClean: {}", tasksToCloseClean.stream().map(Task::id).collect(Collectors.toSet()));
 
                 commitOffsetsOrTransaction(consumedOffsetsAndMetadataPerTask);
                 log.info("EOSTEST: committed offsets during shutdown: {}", consumedOffsetsAndMetadataPerTask);
@@ -923,7 +924,10 @@ public class TaskManager {
                 }
             }
 
+            log.info("EOSTEST: committing offsets for : {}", tasksToCommit.stream().map(Task::id).collect(Collectors.toSet()));
             commitOffsetsOrTransaction(consumedOffsetsAndMetadataPerTask);
+            log.info("EOSTEST: committed offsets during normal commit: {}", consumedOffsetsAndMetadataPerTask);
+
 
             for (final Task task : tasksToCommit) {
                 if (task.commitNeeded()) {
@@ -946,6 +950,7 @@ public class TaskManager {
         } else {
             for (final Task task : activeTaskIterable()) {
                 if (task.commitRequested() && task.commitNeeded()) {
+                    log.info("EOSTEST: committing offsets for user requested task {}", task.id());
                     return commit(activeTaskIterable());
                 }
             }
