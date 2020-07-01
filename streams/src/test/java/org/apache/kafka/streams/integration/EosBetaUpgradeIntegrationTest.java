@@ -76,6 +76,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static org.apache.kafka.common.utils.Utils.mkSet;
 import static org.apache.kafka.test.TestUtils.waitForCondition;
@@ -86,6 +88,8 @@ import static org.junit.Assert.fail;
 @RunWith(Parameterized.class)
 @Category({IntegrationTest.class})
 public class EosBetaUpgradeIntegrationTest {
+
+    private final Logger log = LoggerFactory.getLogger(EosBetaUpgradeIntegrationTest.class);
 
     @Parameterized.Parameters(name = "{0}")
     public static Collection<Boolean[]> data() {
@@ -339,7 +343,7 @@ public class EosBetaUpgradeIntegrationTest {
                 final List<KeyValue<Long, Long>> expectedCommittedResult =
                     computeExpectedResult(committedInputDataDuringFirstUpgrade, committedState);
                 verifyCommitted(expectedCommittedResult);
-            } 
+            }
 
             // phase 5: (restart first client)
             // expected end state per output partition (C == COMMIT; A == ABORT; ---> indicate the changes):
@@ -377,6 +381,7 @@ public class EosBetaUpgradeIntegrationTest {
                     .collect(Collectors.toList()),
                 committedState
             );
+            log.info("EOSTEST: about to verify expected committed records = {}", expectedCommittedResultAfterRestartFirstClient);
             verifyCommitted(expectedCommittedResultAfterRestartFirstClient);
 
 
@@ -413,7 +418,6 @@ public class EosBetaUpgradeIntegrationTest {
                 return new Transformer<Long, Long, KeyValue<Long, Long>>() {
                     ProcessorContext context;
                     KeyValueStore<Long, Long> state = null;
-                    AtomicBoolean crash;
                     AtomicInteger sharedCommit;
 
                     @Override
@@ -422,20 +426,19 @@ public class EosBetaUpgradeIntegrationTest {
                         state = (KeyValueStore<Long, Long>) context.getStateStore(storeName);
                         final String clientId = context.appConfigs().get(StreamsConfig.CLIENT_ID_CONFIG).toString();
                         if ("appDir1".equals(clientId)) {
-                            crash = errorInjectedClient1;
                             sharedCommit = commitCounterClient1;
                         } else {
-                            crash = errorInjectedClient2;
                             sharedCommit = commitCounterClient2;
                         }
                     }
 
                     @Override
                     public KeyValue<Long, Long> transform(final Long key, final Long value) {
+                        log.info("EOSTEST: Processing KeyValue pair = <{}, {}>", key, value);
                         if ((value + 1) % 10 == 0) {
                             if (sharedCommit.get() < 0 ||
                                 sharedCommit.incrementAndGet() == 2) {
-
+                                log.info("EOSTEST: requesting commit");
                                 context.commit();
                             }
                             commitRequested.incrementAndGet();
@@ -447,14 +450,9 @@ public class EosBetaUpgradeIntegrationTest {
                         } else {
                             sum += value;
                         }
+                        log.info("EOSTEST: Finished processing key {}, new sum is {}", key, sum);
                         state.put(key, sum);
                         state.flush();
-
-                        if (value % 10 == 4 && // potentially crash when processing 5th, 15th, or 25th record (etc.)
-                            crash != null && crash.compareAndSet(true, false)) {
-                            // only crash a single task
-                            throw new RuntimeException("Injected test exception.");
-                        }
 
                         return new KeyValue<>(key, state.get(key));
                     }
