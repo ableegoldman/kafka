@@ -202,7 +202,9 @@ public class StandbyTask extends AbstractTask implements Task {
             case SUSPENDED:
                 // don't overwrite the existing checkpoint file if we haven't actually initialized the offsets yet
                 if (checkpointNeededForSuspended) {
+                    log.info("SOPH-writing checkpoint");
                     writeCheckpoint();
+                    log.info("SOPH-wrote the checkpoint");
                     log.debug("Finalized commit for suspended task");
                     checkpointNeededForSuspended = false;
                 } else {

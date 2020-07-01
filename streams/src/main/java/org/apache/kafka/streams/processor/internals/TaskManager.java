@@ -476,10 +476,13 @@ public class TaskManager {
             processingMode == EXACTLY_ONCE_BETA && !consumedOffsetsAndMetadataPerTask.isEmpty();
 
         if (shouldCommitAdditionalTasks) {
+            log.info("EOSTEST: adding additional tasks to commit = {}", additionalTasksForCommitting);
             prepareCommitAndAddOffsetsToMap(additionalTasksForCommitting, consumedOffsetsAndMetadataPerTask);
         }
 
+        log.info("EOSTEST: committing offsets/transaction for revoked tasks = {}", revokedTasks);
         commitOffsetsOrTransaction(consumedOffsetsAndMetadataPerTask);
+        log.info("EOSTEST: committed offsets during revocation: {}", consumedOffsetsAndMetadataPerTask);
 
         for (final Task task : revokedTasks) {
             try {
@@ -771,7 +774,10 @@ public class TaskManager {
             tasksToCloseDirty.addAll(tasksToCommit);
         } else {
             try {
+                log.info("EOSTEST: active task shutdown, tasksToCommit: {}", tasksToCommit);
+
                 commitOffsetsOrTransaction(consumedOffsetsAndMetadataPerTask);
+                log.info("EOSTEST: committed offsets during shutdown: {}", consumedOffsetsAndMetadataPerTask);
 
                 for (final Task task : activeTaskIterable()) {
                     try {

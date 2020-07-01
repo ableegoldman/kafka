@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -144,6 +145,7 @@ public class StateDirectory {
 
         // if the task is stateless, storeDirs would be null
         if (storeDirs == null || storeDirs.length == 0) {
+            log.info("SOPHIE-return empty=true, storeDirs is  " + Arrays.toString(storeDirs));
             return true;
         }
 
@@ -152,6 +154,7 @@ public class StateDirectory {
             if (file.isDirectory()) {
                 baseSubDirectories.add(file);
             } else {
+                log.info("SOPHIE-dir is not empty due to " + file);
                 return false;
             }
         }
@@ -187,8 +190,10 @@ public class StateDirectory {
                     if (file.isDirectory()) {
                         subDirectories.offer(file);
                     } else if (sstOnly && file.getName().endsWith(ROCKSDB_SST_SUFFIX)) {
+                        log.info("SOPHIE-returning false for sst file = " + file);
                         return false;
                     } else if (!sstOnly) {
+                        log.info("SOPHIE-returning false for non-sst file = " + file);
                         return false;
                     }
                 }

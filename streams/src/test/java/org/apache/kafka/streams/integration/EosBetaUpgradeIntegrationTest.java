@@ -94,7 +94,8 @@ public class EosBetaUpgradeIntegrationTest {
     @Parameterized.Parameters(name = "{0}")
     public static Collection<Boolean[]> data() {
         return Arrays.asList(new Boolean[][] {
-            {false}
+            {false},
+            {true}
         });
     }
 
@@ -382,8 +383,12 @@ public class EosBetaUpgradeIntegrationTest {
                 committedState
             );
             log.info("EOSTEST: about to verify expected committed records = {}", expectedCommittedResultAfterRestartFirstClient);
-            verifyCommitted(expectedCommittedResultAfterRestartFirstClient);
+            try {
+                verifyCommitted(expectedCommittedResultAfterRestartFirstClient);
+            } catch (final AssertionError e) {
 
+                throw e;
+            }
 
         } finally {
             if (streams1Alpha != null) {
