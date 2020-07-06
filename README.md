@@ -212,6 +212,8 @@ The following options should be set with a `-P` switch, for example `./gradlew -
 coverage. Note that this introduces some overhead when running tests and hence why it's disabled by default (the overhead
 varies, but 15-20% is a reasonable estimate).
 
+You can limit the total number of workers across all tasks, you can use the --max-workers option
+
 ### Dependency Analysis ###
 
 The gradle [dependency debugging documentation](https://docs.gradle.org/current/userguide/viewing_debugging_dependencies.html) mentions using the `dependencies` or `dependencyInsight` tasks to debug dependencies for the root project or individual subprojects.
