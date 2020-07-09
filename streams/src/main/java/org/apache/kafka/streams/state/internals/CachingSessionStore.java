@@ -235,7 +235,7 @@ class CachingSessionStore
     }
 
     public void close() {
-        final LinkedList<RuntimeException> suppressed = executeAll(
+        final LinkedList<Exception> suppressed = executeAll(
             () -> context.cache().flush(cacheName),
             () -> context.cache().close(cacheName),
             wrapped()::close

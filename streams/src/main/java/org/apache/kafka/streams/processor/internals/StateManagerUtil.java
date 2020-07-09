@@ -16,8 +16,6 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.errors.LockException;
 import org.apache.kafka.streams.errors.ProcessorStateException;
@@ -25,8 +23,13 @@ import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.processor.internals.Task.TaskType;
+import org.apache.kafka.streams.state.internals.ExceptionUtils;
 import org.apache.kafka.streams.state.internals.RecordConverter;
 import org.slf4j.Logger;
+
+import java.io.IOException;
+import java.util.LinkedList;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.kafka.streams.state.internals.RecordConverters.identity;
 import static org.apache.kafka.streams.state.internals.RecordConverters.rawValueToTimestampedValue;
@@ -102,12 +105,9 @@ final class StateManagerUtil {
         final AtomicReference<ProcessorStateException> firstException = new AtomicReference<>(null);
         try {
             if (stateDirectory.lock(id)) {
-                try {
-                    stateMgr.close();
-                } catch (final ProcessorStateException e) {
-                    firstException.compareAndSet(null, e);
-                } finally {
-                    try {
+                final LinkedList<Exception> suppressed = ExceptionUtils.executeAll(
+                    stateMgr::close,
+                    () -> {
                         if (wipeStateStore) {
                             log.debug("Wiping state stores for {} task {}", taskType, id);
                             // we can just delete the whole dir of the task, including the state store images and the checkpoint files,
@@ -115,10 +115,21 @@ final class StateManagerUtil {
                             // need to re-bootstrap the restoration from the beginning
                             Utils.delete(stateMgr.baseDir());
                         }
-                    } finally {
-                        stateDirectory.unlock(id);
-                    }
+                    },
+                    () -> stateDirectory.unlock(id)
+                );
+
+                if (!suppressed.isEmpty()) {
+                    firstException.compareAndSet(
+                        null,
+                        ExceptionUtils.getException(
+                            ProcessorStateException::new,
+                            String.format("%sFatal error while trying to close the state manager for task %s", logPrefix, id),
+                            suppressed
+                        )
+                    );
                 }
+
             }
         } catch (final IOException e) {
             final ProcessorStateException exception = new ProcessorStateException(

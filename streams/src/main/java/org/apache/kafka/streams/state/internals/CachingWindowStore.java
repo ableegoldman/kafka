@@ -303,7 +303,7 @@ class CachingWindowStore
 
     @Override
     public synchronized void close() {
-        final LinkedList<RuntimeException> suppressed = executeAll(
+        final LinkedList<Exception> suppressed = executeAll(
             () -> context.cache().flush(name),
             () -> context.cache().close(name),
             wrapped()::close

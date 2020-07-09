@@ -17,30 +17,47 @@
 package org.apache.kafka.streams.state.internals;
 
 import java.util.LinkedList;
+import java.util.function.BiFunction;
 
-final class ExceptionUtils {
+public final class ExceptionUtils {
     private ExceptionUtils() {}
 
-    static LinkedList<RuntimeException> executeAll(final Runnable... actions) {
-        final LinkedList<RuntimeException> suppressed = new LinkedList<>();
-        for (final Runnable action : actions) {
+    @FunctionalInterface
+    public interface ExceptionalRunnable {
+        void run() throws Exception;
+    }
+
+    public static LinkedList<Exception> executeAll(final ExceptionalRunnable... actions) {
+        final LinkedList<Exception> suppressed = new LinkedList<>();
+        for (final ExceptionalRunnable action : actions) {
             try {
                 action.run();
-            } catch (final RuntimeException exception) {
+            } catch (final Exception exception) {
                 suppressed.add(exception);
             }
         }
         return suppressed;
     }
 
-    static void throwSuppressed(final String message, final LinkedList<RuntimeException> suppressed) {
+    public static void throwSuppressed(final String message, final LinkedList<Exception> suppressed) {
+        throwSuppressed(RuntimeException::new, message, suppressed);
+    }
+
+    public static <E extends RuntimeException> void throwSuppressed(final BiFunction<String, Exception, E> exceptionConstructor,
+                                       final String message,
+                                       final LinkedList<Exception> suppressed) {
         if (!suppressed.isEmpty()) {
-            final RuntimeException firstCause = suppressed.pollFirst();
-            final RuntimeException toThrow = new RuntimeException(message, firstCause);
-            for (final RuntimeException e : suppressed) {
-                toThrow.addSuppressed(e);
-            }
+            final E toThrow = getException(exceptionConstructor, message, suppressed);
             throw toThrow;
         }
+    }
+
+    public static <E extends RuntimeException> E getException(final BiFunction<String, Exception, E> exceptionConstructor, final String message, final LinkedList<Exception> suppressed) {
+        final Exception firstCause = suppressed.pollFirst();
+        final E toThrow = exceptionConstructor.apply(message, firstCause);
+        for (final Exception e : suppressed) {
+            toThrow.addSuppressed(e);
+        }
+        return toThrow;
     }
 }
