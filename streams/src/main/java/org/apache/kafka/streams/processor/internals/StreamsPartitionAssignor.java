@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
+import java.util.TreeMap;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.ListOffsetsResult.ListOffsetsResultInfo;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
@@ -1009,7 +1010,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             final List<TopicPartition> activePartitionsList = new ArrayList<>();
             final List<TaskId> assignedActiveList = new ArrayList<>();
 
-            final Set<TaskId> activeTasksRemovedPendingRevokation = populateActiveTaskAndPartitionsLists(
+            final Set<TaskId> statefulActiveTasksRemovedPendingRevokation = populateActiveTaskAndPartitionsLists(
                 activePartitionsList,
                 assignedActiveList,
                 consumer,
@@ -1022,7 +1023,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             final Map<TaskId, Set<TopicPartition>> standbyTaskMap = buildStandbyTaskMap(
                     consumer,
                     standbyTaskAssignments.get(consumer),
-                    activeTasksRemovedPendingRevokation,
+                    statefulActiveTasksRemovedPendingRevokation,
                     partitionsForTask,
                     clientMetadata.state
                 );
@@ -1037,7 +1038,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                 AssignorError.NONE.code()
             );
 
-            if (!activeTasksRemovedPendingRevokation.isEmpty()) {
+            if (!statefulActiveTasksRemovedPendingRevokation.isEmpty()) {
                 // TODO: once KAFKA-10078 is resolved we can leave it to the client to trigger this rebalance
                 log.info("Requesting {} followup rebalance be scheduled immediately due to tasks changing ownership.", consumer);
                 info.setNextRebalanceTime(0L);
@@ -1076,7 +1077,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                                                              final Map<TaskId, Set<TopicPartition>> partitionsForTask,
                                                              final Set<TopicPartition> allOwnedPartitions) {
         final List<AssignedPartition> assignedPartitions = new ArrayList<>();
-        final Set<TaskId> removedActiveTasks = new TreeSet<>();
+        final Set<TaskId> removedStatefulActiveTasks = new TreeSet<>();
 
         for (final TaskId taskId : activeTasksForConsumer) {
             // Populate the consumer for assigned tasks without considering revocation,
@@ -1096,7 +1097,8 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                         taskId,
                         consumer
                     );
-                    removedActiveTasks.add(taskId);
+
+                    removedStatefulActiveTasks.add(taskId);
 
                     clientState.revokeActiveFromConsumer(taskId, consumer);
 
@@ -1122,7 +1124,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             assignedActiveList.add(partition.taskId);
             activePartitionsList.add(partition.partition);
         }
-        return removedActiveTasks;
+        return removedStatefulActiveTasks;
     }
 
     /**
@@ -1160,10 +1162,13 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
      * balance. The stateful and total task load are both balanced across threads. Tasks without previous owners
      * will be interleaved by group id to spread subtopologies across threads and further balance the workload.
      */
-    static Map<String, List<TaskId>> assignTasksToThreads(final Collection<TaskId> statefulTasksToAssign,
-                                                          final Collection<TaskId> statelessTasksToAssign,
-                                                          final SortedSet<String> consumers,
-                                                          final ClientState state) {
+    Map<String, List<TaskId>> assignTasksToThreads(final Collection<TaskId> statefulTasksToAssign,
+                                                   final Collection<TaskId> statelessTasksToAssign,
+                                                   final SortedSet<String> consumers,
+                                                   final ClientState state) {
+        log.info("SPATEST: assigning tasks to threads for {}", state);
+        log.info("SPATEST: statelessTasksToAssign = {}", statelessTasksToAssign);
+        log.info("SPATEST: statefulTasksToAssign = {}", statefulTasksToAssign);
         final Map<String, List<TaskId>> assignment = new HashMap<>();
         for (final String consumer : consumers) {
             assignment.put(consumer, new ArrayList<>());
@@ -1179,13 +1184,14 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
 
         final Queue<String> consumersToFill = new LinkedList<>();
         // keep track of tasks that we have to skip during the first pass in case we can reassign them later
-        final Map<TaskId, String> unassignedTaskToPreviousOwner = new HashMap<>();
+        final Map<TaskId, String> unassignedTaskToPreviousOwner = new TreeMap<>();
 
         if (!unassignedStatefulTasks.isEmpty()) {
             // First assign stateful tasks to previous owner, up to the min expected tasks/thread
             for (final String consumer : consumers) {
                 final List<TaskId> threadAssignment = assignment.get(consumer);
 
+                log.info("SPATEST: looping through previousTasksByLag for consumer {}  = {}", consumer, getPreviousTasksByLag(state, consumer));
                 for (final TaskId task : getPreviousTasksByLag(state, consumer)) {
                     if (unassignedStatefulTasks.contains(task)) {
                         if (threadAssignment.size() < minStatefulTasksPerThread) {
@@ -1202,6 +1208,8 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                 }
             }
 
+            log.info("SPATEST: phase 1 assignment = {}", assignment);
+
             // Next interleave remaining unassigned tasks amongst unfilled consumers
             while (!consumersToFill.isEmpty()) {
                 final TaskId task = unassignedStatefulTasks.poll();
@@ -1217,11 +1225,14 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                 }
             }
 
+            log.info("SPATEST: phase 2 assignment = {}", assignment);
+
             // At this point all consumers are at the min capacity, so there may be up to N - 1 unassigned
             // stateful tasks still remaining that should now be distributed over the consumers
             if (!unassignedStatefulTasks.isEmpty()) {
                 consumersToFill.addAll(consumers);
 
+                log.info("SPATEST: looping through unassignedTaskToPreviousOwner = {}", unassignedTaskToPreviousOwner);
                 // Go over the tasks we skipped earlier and assign them to their previous owner when possible
                 for (final Map.Entry<TaskId, String> taskEntry : unassignedTaskToPreviousOwner.entrySet()) {
                     final TaskId task = taskEntry.getKey();
@@ -1234,12 +1245,18 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                     }
                 }
 
+                log.info("SPATEST: phase 3 assignment = {}", assignment);
+
+
                 // Now just distribute the remaining unassigned stateful tasks over the consumers still at min capacity
                 for (final TaskId task : unassignedStatefulTasks) {
                     final String consumer = consumersToFill.poll();
                     final List<TaskId> threadAssignment = assignment.get(consumer);
                     threadAssignment.add(task);
                 }
+
+                log.info("SPATEST: phase 4 assignment = {}", assignment);
+
 
 
                 // There must be at least one consumer still at min capacity while all the others are at min
@@ -1254,6 +1271,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                         break;
                     }
                 }
+                log.info("SPATEST: phase 5 assignment = {}", assignment);
             }
         }
 
@@ -1267,12 +1285,23 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             consumersToFill.offer(consumer);
         }
 
+        log.info("SPATEST: phase 6 assignment = {}", assignment);
+
+        if (state.prevActiveTasks().equals(state.activeTasks()) && state.capacity() == state.prevOwnedActiveByConsumer().size()) {
+            for (final String consumer : consumers) {
+                if (!state.prevOwnedActiveByConsumer().get(consumer).equals(state.assignedActiveByConsumer().get(consumer))) {
+                    log.error("SPATESTERROR: active task assignment changed from \n {} \n to \n {}",
+                              state.prevOwnedActiveByConsumer(), state.assignedActiveByConsumer());
+                }
+            }
+        }
+
         return assignment;
     }
 
     private static SortedSet<TaskId> getPreviousTasksByLag(final ClientState state, final String consumer) {
         final SortedSet<TaskId> prevTasksByLag = new TreeSet<>(comparingLong(state::lagFor).thenComparing(TaskId::compareTo));
-        prevTasksByLag.addAll(state.previousTasksForConsumer(consumer));
+        prevTasksByLag.addAll(state.previousStatefulTasksForConsumer(consumer));
         return prevTasksByLag;
     }
 

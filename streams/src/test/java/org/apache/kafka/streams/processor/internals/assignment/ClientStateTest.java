@@ -322,9 +322,9 @@ public class ClientStateTest {
             )
         );
 
-        assertThat(client.previousTasksForConsumer("c1"), equalTo(mkSet(TASK_0_1)));
-        assertThat(client.previousTasksForConsumer("c2"), equalTo(mkSet(TASK_0_2)));
-        assertTrue(client.previousTasksForConsumer("c3").isEmpty());
+        assertThat(client.previousStatefulTasksForConsumer("c1"), equalTo(mkSet(TASK_0_1)));
+        assertThat(client.previousStatefulTasksForConsumer("c2"), equalTo(mkSet(TASK_0_2)));
+        assertTrue(client.previousStatefulTasksForConsumer("c3").isEmpty());
     }
 
     @Test
@@ -337,7 +337,7 @@ public class ClientStateTest {
 
         client.initializePrevTasks(Collections.emptyMap());
 
-        assertThat(client.previousTasksForConsumer("c1"), equalTo(mkSet(TASK_0_3, TASK_0_2, TASK_0_1)));
+        assertThat(client.previousStatefulTasksForConsumer("c1"), equalTo(mkSet(TASK_0_3, TASK_0_2, TASK_0_1)));
     }
 
     @Test

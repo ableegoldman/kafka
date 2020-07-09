@@ -93,7 +93,6 @@ import static org.apache.kafka.common.utils.Utils.mkEntry;
 import static org.apache.kafka.common.utils.Utils.mkMap;
 import static org.apache.kafka.common.utils.Utils.mkSet;
 import static org.apache.kafka.common.utils.Utils.mkSortedSet;
-import static org.apache.kafka.streams.processor.internals.StreamsPartitionAssignor.assignTasksToThreads;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.EMPTY_CHANGELOG_END_OFFSETS;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.EMPTY_TASKS;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.EMPTY_TASK_OFFSET_SUMS;
@@ -329,7 +328,7 @@ public class StreamsPartitionAssignorTest {
 
         assertEquivalentAssignment(
             previousAssignment,
-            assignTasksToThreads(
+            partitionAssignor.assignTasksToThreads(
                 allTasks,
                 emptySet(),
                 consumers,
@@ -340,6 +339,7 @@ public class StreamsPartitionAssignorTest {
 
     @Test
     public void shouldProduceStickyAndBalancedAssignmentWhenNewTasksAreAdded() {
+        configureDefault();
         final List<TaskId> allTasks =
             new ArrayList<>(asList(TASK_0_0, TASK_0_1, TASK_0_2, TASK_0_3, TASK_1_0, TASK_1_1, TASK_1_2, TASK_1_3));
 
@@ -363,7 +363,7 @@ public class StreamsPartitionAssignorTest {
         state.assignActiveTasks(allTasks);
 
         final Map<String, List<TaskId>> newAssignment =
-            assignTasksToThreads(
+            partitionAssignor.assignTasksToThreads(
                 allTasks,
                 emptySet(),
                 consumers,
@@ -376,6 +376,7 @@ public class StreamsPartitionAssignorTest {
 
     @Test
     public void shouldProduceMaximallyStickyAssignmentWhenMemberLeaves() {
+        configureDefault();
         final List<TaskId> allTasks =
             asList(TASK_0_0, TASK_0_1, TASK_0_2, TASK_0_3, TASK_1_0, TASK_1_1, TASK_1_2, TASK_1_3);
 
@@ -396,7 +397,7 @@ public class StreamsPartitionAssignorTest {
         // Consumer 3 leaves the group
         consumers.remove(CONSUMER_3);
 
-        final Map<String, List<TaskId>> assignment = assignTasksToThreads(
+        final Map<String, List<TaskId>> assignment = partitionAssignor.assignTasksToThreads(
             allTasks,
             emptySet(),
             consumers,
@@ -414,6 +415,7 @@ public class StreamsPartitionAssignorTest {
 
     @Test
     public void shouldProduceStickyEnoughAssignmentWhenNewMemberJoins() {
+        configureDefault();
         final List<TaskId> allTasks =
             asList(TASK_0_0, TASK_0_1, TASK_0_2, TASK_0_3, TASK_1_0, TASK_1_1, TASK_1_2, TASK_1_3);
 
@@ -436,7 +438,7 @@ public class StreamsPartitionAssignorTest {
         state.initializePrevTasks(emptyMap());
         state.computeTaskLags(UUID_1, getTaskEndOffsetSums(allTasks));
 
-        final Map<String, List<TaskId>> assignment = assignTasksToThreads(
+        final Map<String, List<TaskId>> assignment = partitionAssignor.assignTasksToThreads(
             allTasks,
             emptySet(),
             consumers,
@@ -476,7 +478,7 @@ public class StreamsPartitionAssignorTest {
         Collections.shuffle(allTasks);
 
         final Map<String, List<TaskId>> interleavedTaskIds =
-            assignTasksToThreads(
+            partitionAssignor.assignTasksToThreads(
                 allTasks,
                 emptySet(),
                 consumers,

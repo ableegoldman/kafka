@@ -59,7 +59,6 @@ public class ClientState {
     private final Map<TaskId, Long> taskOffsetSums; // contains only stateful tasks we previously owned
     private final Map<TaskId, Long> taskLagTotals;  // contains lag for all stateful tasks in the app topology
 
-
     private int capacity;
 
     public ClientState() {
@@ -102,7 +101,7 @@ public class ClientState {
         this.capacity = capacity;
     }
 
-    int capacity() {
+    public int capacity() {
         return capacity;
     }
 
@@ -233,7 +232,7 @@ public class ClientState {
         return activeTasks.contains(taskId) || standbyTasks.contains(taskId);
     }
 
-    Set<TaskId> prevActiveTasks() {
+    public Set<TaskId> prevActiveTasks() {
         return unmodifiableSet(prevActiveTasks);
     }
 
@@ -338,7 +337,7 @@ public class ClientState {
         return activeTasks.stream().filter(task -> !isStateful(task)).collect(Collectors.toSet());
     }
 
-    public Set<TaskId> previousTasksForConsumer(final String memberId) {
+    public Set<TaskId> previousStatefulTasksForConsumer(final String memberId) {
         return consumerToPreviousStatefulTaskIds.get(memberId);
     }
 
@@ -381,8 +380,12 @@ public class ClientState {
             ") changelogOffsetTotalsByTask: (" + taskOffsetSums.entrySet() +
             ") taskLagTotals: (" + taskLagTotals.entrySet() +
             ") capacity: " + capacity +
-            " assigned: " + assignedTaskCount() +
-            "]";
+            " assigned: " + assignedTaskCount() + "\n" +
+            " consumerToPreviousActiveTaskIds: (" + consumerToPreviousActiveTaskIds +  "\n" +
+            ") consumerToAssignedActiveTaskIds: (" + consumerToAssignedActiveTaskIds  + "\n" +
+            ") consumerToPreviousStatefulTaskIds: (" + consumerToPreviousStatefulTaskIds  + "\n" +
+            ") consumerToAssignedStandbyTaskIds: (" + consumerToAssignedStandbyTaskIds  + "\n" +
+            ") ]";
     }
 
     private boolean isStateful(final TaskId task) {
