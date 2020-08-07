@@ -500,6 +500,7 @@ public class StreamThread extends Thread {
     @Override
     public void run() {
         log.info("Starting");
+        log.info("KSQL CLOUD STABILITY TEST");
         if (setState(State.STARTING) == null) {
             log.info("StreamThread already shutdown. Not running");
             return;
