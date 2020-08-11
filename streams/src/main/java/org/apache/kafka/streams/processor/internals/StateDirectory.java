@@ -321,7 +321,7 @@ public class StateDirectory {
                         final long now = time.milliseconds();
                         final long lastModifiedMs = taskDir.lastModified();
                         if (now > lastModifiedMs + cleanupDelayMs) {
-                            log.info("{} Deleting obsolete state directory {} for task {} as {}ms has elapsed (cleanup delay is {}ms).",
+                            log.debug("{} Deleting obsolete state directory {} for task {} as {}ms has elapsed (cleanup delay is {}ms).",
                                 logPrefix(), dirName, id, now - lastModifiedMs, cleanupDelayMs);
 
                             Utils.delete(taskDir, Collections.singletonList(new File(taskDir, LOCK_FILE_NAME)));
