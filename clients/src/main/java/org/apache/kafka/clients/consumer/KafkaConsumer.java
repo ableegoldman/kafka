@@ -962,7 +962,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
                 throwIfNoAssignorsConfigured();
                 fetcher.clearBufferedDataForUnassignedTopics(topics);
-                log.info("Subscribed to topic(s): {}", Utils.join(topics, ", "));
+                log.debug("Subscribed to topic(s): {}", Utils.join(topics, ", "));
                 if (this.subscriptions.subscribe(new HashSet<>(topics), listener))
                     metadata.requestUpdateForNewTopics();
             }
@@ -1026,7 +1026,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         acquireAndEnsureOpen();
         try {
             throwIfNoAssignorsConfigured();
-            log.info("Subscribed to pattern: '{}'", pattern);
+            log.debug("Subscribed to pattern: '{}'", pattern);
             this.subscriptions.subscribe(pattern, listener);
             this.coordinator.updatePatternSubscription(metadata.fetch());
             this.metadata.requestUpdateForNewTopics();
@@ -1071,7 +1071,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                 this.coordinator.maybeLeaveGroup("the consumer unsubscribed from all topics");
             }
             this.subscriptions.unsubscribe();
-            log.info("Unsubscribed all topics or patterns and assigned partitions");
+            log.debug("Unsubscribed all topics or patterns and assigned partitions");
         } finally {
             release();
         }
@@ -1117,7 +1117,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                 if (coordinator != null)
                     this.coordinator.maybeAutoCommitOffsetsAsync(time.milliseconds());
 
-                log.info("Subscribed to partition(s): {}", Utils.join(partitions, ", "));
+                log.debug("Subscribed to partition(s): {}", Utils.join(partitions, ", "));
                 if (this.subscriptions.assignFromUser(new HashSet<>(partitions)))
                     metadata.requestUpdateForNewTopics();
             }
@@ -1593,7 +1593,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
         acquireAndEnsureOpen();
         try {
-            log.info("Seeking to offset {} for partition {}", offset, partition);
+            log.debug("Seeking to offset {} for partition {}", offset, partition);
             SubscriptionState.FetchPosition newPosition = new SubscriptionState.FetchPosition(
                     offset,
                     Optional.empty(), // This will ensure we skip validation
@@ -1623,10 +1623,10 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         acquireAndEnsureOpen();
         try {
             if (offsetAndMetadata.leaderEpoch().isPresent()) {
-                log.info("Seeking to offset {} for partition {} with epoch {}",
+                log.debug("Seeking to offset {} for partition {} with epoch {}",
                         offset, partition, offsetAndMetadata.leaderEpoch().get());
             } else {
-                log.info("Seeking to offset {} for partition {}", offset, partition);
+                log.debug("Seeking to offset {} for partition {}", offset, partition);
             }
             Metadata.LeaderAndEpoch currentLeaderAndEpoch = this.metadata.currentLeader(partition);
             SubscriptionState.FetchPosition newPosition = new SubscriptionState.FetchPosition(

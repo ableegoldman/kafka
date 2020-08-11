@@ -246,7 +246,7 @@ public class SubscriptionState {
         for (TopicPartition topicPartition : assignments) {
             if (this.subscribedPattern != null) {
                 if (!this.subscribedPattern.matcher(topicPartition.topic()).matches()) {
-                    log.info("Assigned partition {} for non-subscribed topic regex pattern; subscription pattern is {}",
+                    log.debug("Assigned partition {} for non-subscribed topic regex pattern; subscription pattern is {}",
                         topicPartition,
                         this.subscribedPattern);
 
@@ -254,7 +254,7 @@ public class SubscriptionState {
                 }
             } else {
                 if (!this.subscription.contains(topicPartition.topic())) {
-                    log.info("Assigned partition {} for non-subscribed topic; subscription is {}", topicPartition, this.subscription);
+                    log.debug("Assigned partition {} for non-subscribed topic; subscription is {}", topicPartition, this.subscription);
 
                     return false;
                 }
@@ -394,7 +394,7 @@ public class SubscriptionState {
         } else if (requestedResetStrategy != state.resetStrategy) {
             log.debug("Skipping reset of partition {} since an alternative reset has been requested", tp);
         } else {
-            log.info("Resetting offset for partition {} to offset {}.", tp, offset);
+            log.debug("Resetting offset for partition {} to offset {}.", tp, offset);
             state.seekUnvalidated(new FetchPosition(offset));
         }
     }
@@ -611,7 +611,7 @@ public class SubscriptionState {
 
     public synchronized void requestOffsetReset(Collection<TopicPartition> partitions, OffsetResetStrategy offsetResetStrategy) {
         partitions.forEach(tp -> {
-            log.info("Seeking to {} offset of partition {}", offsetResetStrategy, tp);
+            log.debug("Seeking to {} offset of partition {}", offsetResetStrategy, tp);
             assignedState(tp).reset(offsetResetStrategy);
         });
     }
