@@ -1346,7 +1346,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                     // if there's no committed offset, record as null
                     offsets.put(tp, new OffsetAndMetadata(partitionData.offset, partitionData.leaderEpoch, partitionData.metadata));
                 } else {
-                    log.info("Found no committed offset for partition {}", tp);
+                    log.debug("Found no committed offset for partition {}", tp);
                     offsets.put(tp, null);
                 }
             }

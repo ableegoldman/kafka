@@ -589,7 +589,7 @@ public class StoreChangelogReader implements ChangelogReader {
 
         // we should check even if there's nothing restored, but do not check completed if we are processing standby tasks
         if (changelogMetadata.stateManager.taskType() == Task.TaskType.ACTIVE && hasRestoredToEnd(changelogMetadata)) {
-            log.info("Finished restoring changelog {} to store {} with a total number of {} records",
+            log.debug("Finished restoring changelog {} to store {} with a total number of {} records",
                 partition, storeName, changelogMetadata.totalRestored);
 
             changelogMetadata.transitTo(ChangelogState.COMPLETED);
