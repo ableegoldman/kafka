@@ -76,7 +76,7 @@ public class StickyTaskAssignor implements TaskAssignor {
             for (int i = 0; i < numStandbyReplicas; i++) {
                 final Set<UUID> ids = findClientsWithoutAssignedTask(taskId);
                 if (ids.isEmpty()) {
-                    log.warn("Unable to assign {} of {} standby tasks for task [{}]. " +
+                    log.trace("Unable to assign {} of {} standby tasks for task [{}]. " +
                                      "There is not enough available capacity. You should " +
                                      "increase the number of threads and/or application instances " +
                                      "to maintain the requested number of standby replicas.",

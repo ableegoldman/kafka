@@ -212,7 +212,7 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
 
             transitionTo(State.RESTORING);
 
-            log.info("Initialized");
+            log.debug("Initialized");
         }
     }
 
@@ -233,7 +233,7 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
 
                 transitionTo(State.RUNNING);
 
-                log.info("Restored and ready to run");
+                log.debug("Restored and ready to run");
 
                 break;
 
@@ -251,14 +251,14 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
     public void suspend() {
         switch (state()) {
             case CREATED:
-                log.info("Suspended created");
+                log.debug("Suspended created");
                 checkpointNeededForSuspended = false;
                 transitionTo(State.SUSPENDED);
 
                 break;
 
             case RESTORING:
-                log.info("Suspended restoring");
+                log.debug("Suspended restoring");
                 checkpointNeededForSuspended = true;
                 transitionTo(State.SUSPENDED);
 
@@ -271,13 +271,13 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
                     checkpointNeededForSuspended = true;
                 } finally {
                     transitionTo(State.SUSPENDED);
-                    log.info("Suspended running");
+                    log.debug("Suspended running");
                 }
 
                 break;
 
             case SUSPENDED:
-                log.info("Skip suspending since state is {}", state());
+                log.debug("Skip suspending since state is {}", state());
 
                 break;
 
@@ -331,7 +331,7 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
                 // just transit the state without any logical changes: suspended and restoring states
                 // are not actually any different for inner modules
                 transitionTo(State.RESTORING);
-                log.info("Resumed to restoring state");
+                log.debug("Resumed to restoring state");
 
                 break;
 
@@ -499,14 +499,14 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
         validateClean();
         streamsMetrics.removeAllTaskLevelSensors(Thread.currentThread().getName(), id.toString());
         close(true);
-        log.info("Closed clean");
+        log.debug("Closed clean");
     }
 
     @Override
     public void closeDirty() {
         streamsMetrics.removeAllTaskLevelSensors(Thread.currentThread().getName(), id.toString());
         close(false);
-        log.info("Closed dirty");
+        log.debug("Closed dirty");
     }
 
     @Override
@@ -539,7 +539,7 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
 
         transitionTo(State.CLOSED);
 
-        log.info("Closed clean and recycled state");
+        log.debug("Closed clean and recycled state");
     }
 
     private void writeCheckpoint() {
@@ -620,7 +620,7 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
             // a task is only closing / closed when 1) task manager is closing, 2) a rebalance is undergoing;
             // in either case we can just log it and move on without notifying the thread since the consumer
             // would soon be updated to not return any records for this task anymore.
-            log.info("Stream task {} is already in {} state, skip processing it.", id(), state());
+            log.debug("Stream task {} is already in {} state, skip processing it.", id(), state());
 
             return false;
         }

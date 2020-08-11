@@ -104,7 +104,7 @@ public class StandbyTask extends AbstractTask implements Task {
 
             processorContext.initialize();
 
-            log.info("Initialized");
+            log.debug("Initialized");
         } else if (state() == State.RESTORING) {
             throw new IllegalStateException("Illegal state " + state() + " while initializing standby task " + id);
         }
@@ -119,21 +119,21 @@ public class StandbyTask extends AbstractTask implements Task {
     public void suspend() {
         switch (state()) {
             case CREATED:
-                log.info("Suspended created");
+                log.debug("Suspended created");
                 checkpointNeededForSuspended = false;
                 transitionTo(State.SUSPENDED);
 
                 break;
 
             case RUNNING:
-                log.info("Suspended running");
+                log.debug("Suspended running");
                 checkpointNeededForSuspended = true;
                 transitionTo(State.SUSPENDED);
 
                 break;
 
             case SUSPENDED:
-                log.info("Skip suspending since state is {}", state());
+                log.debug("Skip suspending since state is {}", state());
 
                 break;
 
@@ -220,14 +220,14 @@ public class StandbyTask extends AbstractTask implements Task {
     public void closeClean() {
         streamsMetrics.removeAllTaskLevelSensors(Thread.currentThread().getName(), id.toString());
         close(true);
-        log.info("Closed clean");
+        log.debug("Closed clean");
     }
 
     @Override
     public void closeDirty() {
         streamsMetrics.removeAllTaskLevelSensors(Thread.currentThread().getName(), id.toString());
         close(false);
-        log.info("Closed dirty");
+        log.debug("Closed dirty");
     }
 
     @Override
@@ -242,7 +242,7 @@ public class StandbyTask extends AbstractTask implements Task {
         closeTaskSensor.record();
         transitionTo(State.CLOSED);
 
-        log.info("Closed clean and recycled state");
+        log.debug("Closed clean and recycled state");
     }
 
     private void writeCheckpoint() {

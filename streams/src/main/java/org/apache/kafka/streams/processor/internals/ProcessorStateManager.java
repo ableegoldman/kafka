@@ -223,7 +223,7 @@ public class ProcessorStateManager implements StateManager {
 
             for (final StateStoreMetadata store : stores.values()) {
                 if (store.changelogPartition == null) {
-                    log.info("State store {} is not logged and hence would not be restored", store.stateStore.name());
+                    log.debug("State store {} is not logged and hence would not be restored", store.stateStore.name());
                 } else if (store.offset() == null) {
                     if (loadedCheckpoints.containsKey(store.changelogPartition)) {
                         final Long offset = changelogOffsetFromCheckpointedOffset(loadedCheckpoints.remove(store.changelogPartition));
@@ -243,7 +243,7 @@ public class ProcessorStateManager implements StateManager {
 
                             throw new TaskCorruptedException(Collections.singletonMap(taskId, changelogPartitions()));
                         } else {
-                            log.info("State store {} did not find checkpoint offset, hence would " +
+                            log.debug("State store {} did not find checkpoint offset, hence would " +
                                 "default to the starting offset at changelog {}",
                                 store.stateStore.name(), store.changelogPartition);
                         }
