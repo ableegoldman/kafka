@@ -477,6 +477,8 @@ public abstract class AbstractCoordinator implements Closeable {
         // we store the join future in case we are woken up by the user after beginning the
         // rebalance in the call to poll below. This ensures that we do not mistakenly attempt
         // to rejoin before the pending rebalance has completed.
+        log.info("SOPHIE: maybe initiating join group");
+
         if (joinFuture == null) {
 
             state = MemberState.REBALANCING;
@@ -484,6 +486,8 @@ public abstract class AbstractCoordinator implements Closeable {
             // in this case we would not update the start time.
             if (lastRebalanceStartMs == -1L)
                 lastRebalanceStartMs = time.milliseconds();
+            log.info("SOPHIE: sending join group request");
+
             joinFuture = sendJoinGroupRequest();
             joinFuture.addListener(new RequestFutureListener<ByteBuffer>() {
                 @Override
@@ -514,6 +518,8 @@ public abstract class AbstractCoordinator implements Closeable {
                     // we handle failures below after the request finishes. if the join completes
                     // after having been woken up, the exception is ignored and we will rejoin
                     synchronized (AbstractCoordinator.this) {
+                        log.info("SOPHIE: join group failed with", e);
+
                         recordRebalanceFailure();
                     }
                 }
@@ -553,7 +559,7 @@ public abstract class AbstractCoordinator implements Closeable {
                         .setRebalanceTimeoutMs(this.rebalanceConfig.rebalanceTimeoutMs)
         );
 
-        log.debug("Sending JoinGroup ({}) to coordinator {}", requestBuilder, this.coordinator);
+        log.info("Sending JoinGroup ({}) to coordinator {}", requestBuilder, this.coordinator);
 
         // Note that we override the request timeout using the rebalance timeout since that is the
         // maximum time that it may block on the coordinator. We add an extra 5 seconds for small delays.
@@ -670,7 +676,7 @@ public abstract class AbstractCoordinator implements Closeable {
                                 .setGenerationId(generation.generationId)
                                 .setAssignments(Collections.emptyList())
                 );
-        log.debug("Sending follower SyncGroup to coordinator {} at generation {}: {}", this.coordinator, this.generation, requestBuilder);
+        log.info("Sending follower SyncGroup to coordinator {} at generation {}: {}", this.coordinator, this.generation, requestBuilder);
         return sendSyncGroupRequest(requestBuilder);
     }
 
@@ -699,7 +705,7 @@ public abstract class AbstractCoordinator implements Closeable {
                                     .setGenerationId(generation.generationId)
                                     .setAssignments(groupAssignmentList)
                     );
-            log.debug("Sending leader SyncGroup to coordinator {} at generation {}: {}", this.coordinator, this.generation, requestBuilder);
+            log.info("Sending leader SyncGroup to coordinator {} at generation {}: {}", this.coordinator, this.generation, requestBuilder);
             return sendSyncGroupRequest(requestBuilder);
         } catch (RuntimeException e) {
             return RequestFuture.failure(e);
@@ -730,7 +736,7 @@ public abstract class AbstractCoordinator implements Closeable {
                 } else if (isProtocolNameInconsistent(ApiKeys.SYNC_GROUP, syncResponse.data.protocolName())) {
                     future.raise(Errors.INCONSISTENT_GROUP_PROTOCOL);
                 } else {
-                    log.debug("Received successful SyncGroup response: {}", syncResponse);
+                    log.info("Received successful SyncGroup response: {}", syncResponse);
                     sensors.syncSensor.record(response.requestLatencyMs());
                     future.complete(ByteBuffer.wrap(syncResponse.data.assignment()));
                 }
@@ -740,7 +746,7 @@ public abstract class AbstractCoordinator implements Closeable {
                 if (error == Errors.GROUP_AUTHORIZATION_FAILED) {
                     future.raise(GroupAuthorizationException.forGroupId(rebalanceConfig.groupId));
                 } else if (error == Errors.REBALANCE_IN_PROGRESS) {
-                    log.debug("SyncGroup failed because the group began another rebalance");
+                    log.info("SyncGroup failed because the group began another rebalance");
                     future.raise(error);
                 } else if (error == Errors.FENCED_INSTANCE_ID) {
                     // for sync-group request, even if the generation has changed we would not expect the instance id
@@ -757,7 +763,7 @@ public abstract class AbstractCoordinator implements Closeable {
                     future.raise(error);
                 } else if (error == Errors.COORDINATOR_NOT_AVAILABLE
                         || error == Errors.NOT_COORDINATOR) {
-                    log.debug("SyncGroup failed: {}, marking coordinator unknown", error.message());
+                    log.info("SyncGroup failed: {}, marking coordinator unknown", error.message());
                     markCoordinatorUnknown();
                     future.raise(error);
                 } else {
@@ -1259,7 +1265,7 @@ public abstract class AbstractCoordinator implements Closeable {
 
         public void enable() {
             synchronized (AbstractCoordinator.this) {
-                log.debug("Enabling heartbeat thread");
+                log.info("Enabling heartbeat thread");
                 this.enabled = true;
                 heartbeat.resetTimeouts();
                 AbstractCoordinator.this.notify();
@@ -1268,7 +1274,7 @@ public abstract class AbstractCoordinator implements Closeable {
 
         public void disable() {
             synchronized (AbstractCoordinator.this) {
-                log.debug("Disabling heartbeat thread");
+                log.info("Disabling heartbeat thread");
                 this.enabled = false;
             }
         }
@@ -1313,13 +1319,17 @@ public abstract class AbstractCoordinator implements Closeable {
                         long now = time.milliseconds();
 
                         if (coordinatorUnknown()) {
-                            if (findCoordinatorFuture != null || lookupCoordinator().failed())
+                            if (findCoordinatorFuture != null || lookupCoordinator().failed()) {
                                 // the immediate future check ensures that we backoff properly in the case that no
                                 // brokers are available to connect to.
+                                log.info("SOPHIE: heartbeat coordinator unknown, backing off for {}", rebalanceConfig.retryBackoffMs);
+
                                 AbstractCoordinator.this.wait(rebalanceConfig.retryBackoffMs);
+                            }
                         } else if (heartbeat.sessionTimeoutExpired(now)) {
                             // the session timeout has expired without seeing a successful heartbeat, so we should
                             // probably make sure the coordinator is still healthy.
+                            log.info("SOPHIE: heartbeat saw session timeout expired, need to rediscover coordinator");
                             markCoordinatorUnknown();
                         } else if (heartbeat.pollTimeoutExpired(now)) {
                             // the poll timeout has expired, which means that the foreground thread has stalled
@@ -1329,18 +1339,26 @@ public abstract class AbstractCoordinator implements Closeable {
                                                     "the poll loop is spending too much time processing messages. " +
                                                     "You can address this either by increasing max.poll.interval.ms or by reducing " +
                                                     "the maximum size of batches returned in poll() with max.poll.records.";
+                            log.info("SOPHIE: heartbeat poll timeout expired, maybe leaving group");
+
                             maybeLeaveGroup(leaveReason);
                         } else if (!heartbeat.shouldHeartbeat(now)) {
                             // poll again after waiting for the retry backoff in case the heartbeat failed or the
                             // coordinator disconnected
+                            log.info("SOPHIE: not ready to heartbeat at now = {}", now);
+
                             AbstractCoordinator.this.wait(rebalanceConfig.retryBackoffMs);
                         } else {
+                            log.info("SOPHIE: sending heartbeat");
+
                             heartbeat.sentHeartbeat(now);
                             final RequestFuture<Void> heartbeatFuture = sendHeartbeatRequest();
                             heartbeatFuture.addListener(new RequestFutureListener<Void>() {
                                 @Override
                                 public void onSuccess(Void value) {
                                     synchronized (AbstractCoordinator.this) {
+                                        log.info("SOPHIE: heartbeat successful");
+
                                         heartbeat.receiveHeartbeat();
                                     }
                                 }
@@ -1353,12 +1371,15 @@ public abstract class AbstractCoordinator implements Closeable {
                                             // ensures that the coordinator keeps the member in the group for as long
                                             // as the duration of the rebalance timeout. If we stop sending heartbeats,
                                             // however, then the session timeout may expire before we can rejoin.
+                                            log.info("SOPHIE: heartbeat response was RebalanceInProgressException");
                                             heartbeat.receiveHeartbeat();
                                         } else if (e instanceof FencedInstanceIdException) {
                                             log.error("Caught fenced group.instance.id {} error in heartbeat thread", rebalanceConfig.groupInstanceId);
                                             heartbeatThread.failed.set(e);
                                             heartbeatThread.disable();
                                         } else {
+                                            log.info("SOPHIE: heartbeat failed with", e);
+
                                             heartbeat.failHeartbeat();
                                             // wake up the thread if it's sleeping to reschedule the heartbeat
                                             AbstractCoordinator.this.notify();

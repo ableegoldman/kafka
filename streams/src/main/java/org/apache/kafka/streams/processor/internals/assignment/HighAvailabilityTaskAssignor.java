@@ -92,7 +92,7 @@ public class HighAvailabilityTaskAssignor implements TaskAssignor {
 
         final boolean probingRebalanceNeeded = neededActiveTaskMovements + neededStandbyTaskMovements > 0;
 
-        log.info("Decided on assignment: " +
+        log.debug("Decided on assignment: " +
                      clientStates +
                      " with" +
                      (probingRebalanceNeeded ? "" : " no") +

@@ -282,6 +282,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
      */
     @Override
     public GroupAssignment assign(final Cluster metadata, final GroupSubscription groupSubscription) {
+        log.info("SOPHIE: begin assignment");
         final Map<String, Subscription> subscriptions = groupSubscription.groupSubscription();
 
         // ---------------- Step Zero ---------------- //
@@ -399,6 +400,8 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                 versionProbing,
                 probingRebalanceNeeded
         );
+
+        log.info("SOPHIE: end assignment");
 
         return new GroupAssignment(assignment);
     }
@@ -725,7 +728,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                                                                    statefulTasks,
                                                                    assignmentConfigs);
 
-        log.info("Assigned tasks to clients as {}{}.",
+        log.debug("Assigned tasks to clients as {}{}.",
             Utils.NL, clientStates.entrySet().stream().map(Map.Entry::toString).collect(Collectors.joining(Utils.NL)));
 
         return probingRebalanceNeeded;
@@ -1071,7 +1074,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                 // If the partition is new to this consumer but is still owned by another, remove from the assignment
                 // until it has been revoked and can safely be reassigned according to the COOPERATIVE protocol
                 if (newPartitionForConsumer && allOwnedPartitions.contains(partition)) {
-                    log.info(
+                    log.debug(
                         "Removing task {} from {} active assignment until it is safely revoked in followup rebalance",
                         taskId,
                         consumer
@@ -1116,7 +1119,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             standbyTaskMap.put(task, partitionsForTask.get(task));
         }
         for (final TaskId task : tasksRevoked) {
-            log.info(
+            log.debug(
                 "Adding removed active task {} as a standby for {} until it is safely revoked in followup rebalance",
                 task,
                 consumer
