@@ -35,6 +35,7 @@ import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.TimeoutException;
+import org.apache.kafka.common.errors.TransactionAbortedException;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.apache.kafka.common.internals.ClusterResourceListeners;
 import org.apache.kafka.common.message.AddOffsetsToTxnResponseData;
@@ -873,6 +874,43 @@ public class KafkaProducerTest {
             producer.initTransactions();
             producer.beginTransaction();
             producer.abortTransaction();
+        }
+    }
+
+    @Test
+    public void testSendExceptionOnAbortedTransaction() {
+        Map<String, Object> configs = new HashMap<>();
+        configs.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, "some.id");
+        configs.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9000");
+
+        Time time = new MockTime(1);
+        MetadataResponse initialUpdateResponse = TestUtils.metadataUpdateWith(1, singletonMap("topic", 1));
+        ProducerMetadata metadata = newMetadata(0, Long.MAX_VALUE);
+
+        MockClient client = new MockClient(time, metadata);
+        client.updateMetadata(initialUpdateResponse);
+
+        client.prepareResponse(FindCoordinatorResponse.prepareResponse(Errors.NONE, host1));
+        client.prepareResponse(initProducerIdResponse(1L, (short) 5, Errors.NONE));
+        client.prepareResponse(endTxnResponse(Errors.NONE));
+
+        AtomicReference<Exception> sendException = new AtomicReference<>(null);
+        try (
+            Producer<String, String> producer = new KafkaProducer<>(
+                configs,
+                new StringSerializer(),
+                new StringSerializer(),
+                metadata,
+                client,
+                null,
+                time)
+        ) {
+            producer.initTransactions();
+            producer.beginTransaction();
+            producer.send(new ProducerRecord<>("k", ""), (recordMetadata, exception) -> sendException.set(exception));
+            producer.abortTransaction();
+
+            assertEquals(new TransactionAbortedException(), sendException.get());
         }
     }
 
