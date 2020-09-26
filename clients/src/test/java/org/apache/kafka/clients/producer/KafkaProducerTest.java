@@ -907,10 +907,10 @@ public class KafkaProducerTest {
         ) {
             producer.initTransactions();
             producer.beginTransaction();
-            producer.send(new ProducerRecord<>("k", ""), (recordMetadata, exception) -> sendException.set(exception));
+            producer.send(new ProducerRecord<>("topic", "v"), (recordMetadata, exception) -> sendException.set(exception));
             producer.abortTransaction();
 
-            assertEquals(new TransactionAbortedException(), sendException.get());
+            assertTrue(sendException.get() instanceof TransactionAbortedException);
         }
     }
 
