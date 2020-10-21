@@ -16,6 +16,8 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
+import java.util.StringJoiner;
+import java.util.TreeMap;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -268,6 +270,8 @@ public class StreamThread extends Thread {
     private final Sensor commitRatioSensor;
 
     private long now;
+    private long lastLogDumpMs;
+    private long logDumpCounter = 0;
     private long lastPollMs;
     private long lastCommitMs;
     private int numIterations;
@@ -510,6 +514,7 @@ public class StreamThread extends Thread {
         }
         boolean cleanRun = false;
         try {
+            lastLogDumpMs = time.milliseconds();
             runLoop();
             cleanRun = true;
         } catch (final Exception e) {
@@ -712,7 +717,49 @@ public class StreamThread extends Thread {
         punctuateRatioSensor.record((double) totalPunctuateLatency / runOnceLatency, now);
         pollRatioSensor.record((double) pollLatency / runOnceLatency, now);
         commitRatioSensor.record((double) totalCommitLatency / runOnceLatency, now);
+        if (now - lastLogDumpMs > 5 * 60 * 1000L) {
+            ++logDumpCounter;
+            logMetrics(streamsMetrics.metrics());
+            lastLogDumpMs = now;
+        }
     }
+
+    public void logMetrics(final Map<MetricName, ? extends Metric> metricMap) {
+        final Map<String, Object> metrics = new TreeMap<>();
+        int maxNameLength = 0;
+        for (final Metric metric : metricMap.values()) {
+            final String tags = formatTags(new TreeMap<>(metric.metricName().tags()));
+            final String name = metric.metricName().group() + "." + metric.metricName().name() + " {" + tags + "}";
+            metrics.put(name, metric.metricValue());
+            maxNameLength = Math.max(maxNameLength, name.length());
+
+        }
+        for (final Map.Entry<String, Object> metric : metrics.entrySet()) {
+            final String name = metric.getKey();
+            log.info("[dump {}] {} : {}",
+                     logDumpCounter,
+                     name + spaces(maxNameLength - name.length()),
+                     metric.getValue());
+        }
+    }
+
+    private static String spaces(final int n) {
+        final StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            builder.append(" ");
+        }
+        return builder.toString();
+    }
+
+
+    private static String formatTags(final Map<String, String> tags) {
+        final StringJoiner joiner = new StringJoiner(", ");
+        for (final Map.Entry<String, String> entry : tags.entrySet()) {
+            joiner.add(entry.getKey() + "=" + entry.getValue());
+        }
+        return joiner.toString();
+    }
+
 
     private void initializeAndRestorePhase() {
         // only try to initialize the assigned tasks
