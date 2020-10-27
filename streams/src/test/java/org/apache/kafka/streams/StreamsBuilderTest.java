@@ -896,22 +896,6 @@ public class StreamsBuilderTest {
             STREAM_OPERATION_NAME);
     }
 
-    @Test
-    public void shouldAllowReadingFromSameTopic() {
-        builder.stream("topic");
-        builder.stream("topic");
-        builder.build();
-    }
-
-    @Test
-    public void shouldAllowSubscribingToSamePattern() {
-        builder.stream(Pattern.compile("some-regex"));
-        builder.stream(Pattern.compile("some-regex"));
-        builder.build();
-    }
-
-
-
     private static void assertNamesForOperation(final ProcessorTopology topology, final String... expected) {
         final List<ProcessorNode<?, ?, ?, ?>> processors = topology.processors();
         assertEquals("Invalid number of expected processors", expected.length, processors.size());
