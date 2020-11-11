@@ -667,7 +667,8 @@ public class KafkaStreams implements AutoCloseable {
             processId  = UUID.randomUUID();
             clientId = applicationId + "-" + processId;
         } else {
-            processId = UUID.fromString(userClientId);
+            // we don't care what the value is, just that it's deterministically derived from the configured clientID string
+            processId = new UUID(userClientId.hashCode(), 0);
             clientId = userClientId;
         }
 
