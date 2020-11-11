@@ -660,12 +660,14 @@ public class KafkaStreams implements AutoCloseable {
         this.config = config;
         this.time = time;
         // The application ID is a required config and hence should always have value
-        final UUID processId = UUID.randomUUID();
-        final String userClientId = config.getString(StreamsConfig.CLIENT_ID_CONFIG);
         final String applicationId = config.getString(StreamsConfig.APPLICATION_ID_CONFIG);
+        final String userClientId = config.getString(StreamsConfig.CLIENT_ID_CONFIG);
+        final UUID processId;
         if (userClientId.length() <= 0) {
+            processId  = UUID.randomUUID();
             clientId = applicationId + "-" + processId;
         } else {
+            processId = UUID.fromString(userClientId);
             clientId = userClientId;
         }
 

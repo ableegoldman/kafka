@@ -147,7 +147,7 @@
               files="(KafkaStreams|KStreamImpl|KTableImpl|StreamsPartitionAssignor).java"/>
 
     <suppress checks="MethodLength"
-              files="KTableImpl.java"/>
+              files="(KafkaStreams|KTableImpl).java"/>
 
     <suppress checks="ParameterNumber"
               files="StreamThread.java"/>
