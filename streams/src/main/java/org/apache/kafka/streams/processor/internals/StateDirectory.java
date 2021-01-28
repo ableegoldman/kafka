@@ -73,14 +73,15 @@ public class StateDirectory {
     private final Object taskDirCreationLock = new Object();
     private final Time time;
     private final String appId;
+    private final UUID processId;
     private final File stateDir;
     private final boolean hasPersistentStores;
 
     private final HashMap<TaskId, FileChannel> channels = new HashMap<>();
     private final HashMap<TaskId, LockAndOwner> locks = new HashMap<>();
 
-    private FileChannel stateDirLockChannel;
-    private FileLock stateDirLock;
+    private static FileChannel stateDirLockChannel;
+    private static FileLock stateDirLock;
 
     private FileChannel globalStateChannel;
     private FileLock globalStateLock;
@@ -131,11 +132,25 @@ public class StateDirectory {
             configurePermissions(baseDir);
             configurePermissions(stateDir);
 
-            if (!lockStateDirectory()) {
-                log.error("Unable to obtain lock as state directory is already locked by another process");
-                throw new StreamsException("Unable to initialize state, this can happen if multiple instances of " +
-                                               "Kafka Streams are running in the same state directory");
+            /*
+             * This should never happen in a "real" scenario since it implies the user has started multiple KafkaStreams
+             * instances belonging to the same application within this JVM. Unfortunately we do this all the time
+             * to simulate multiple instances in integration tests; therefore we log a warning and get a random UUID
+             * to avoid overlapping processIds.
+             */
+            if (stateDirLock != null) {
+                log.warn("Found the state directory already locked by this JVM during initialization, grabbing a new processID");
+                processId = UUID.randomUUID();
+            } else {
+                if (!lockStateDirectory()) {
+                    log.error("Unable to obtain lock as state directory is already locked by another process");
+                    throw new StreamsException("Unable to initialize state, this can happen if multiple instances of " +
+                                                   "Kafka Streams are running in the same state directory");
+                }
+                processId = readProcessIdFromFile();
             }
+        } else {
+            processId = UUID.randomUUID();
         }
     }
 
@@ -177,10 +192,10 @@ public class StateDirectory {
     }
 
     public UUID getProcessId() {
-        if (!hasPersistentStores) {
-            return UUID.randomUUID();
-        }
+        return processId;
+    }
 
+    private UUID readProcessIdFromFile() {
         final File processFile = new File(stateDir, PROCESS_FILE_NAME);
         try {
             if (processFile.exists()) {
