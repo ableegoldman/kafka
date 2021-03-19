@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.streams;
 
+import java.util.List;
 import java.util.Properties;
 
 import org.apache.kafka.streams.KafkaStreams.State;
@@ -47,5 +48,9 @@ public class KafkaStreamsWrapper extends KafkaStreams {
             throw new IllegalStateException("Can only set StateListener in CREATED state. " +
                 "Current state is: " + state);
         }
+    }
+
+    public List<StreamThread> threads() {
+        return super.threads;
     }
 }

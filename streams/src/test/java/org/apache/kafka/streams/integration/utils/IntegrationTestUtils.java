@@ -39,6 +39,7 @@ import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.KafkaStreams.State;
 import org.apache.kafka.streams.KafkaStreams.StateListener;
+import org.apache.kafka.streams.KafkaStreamsWrapper;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.KeyValueTimestamp;
 import org.apache.kafka.streams.StoreQueryParameters;
@@ -991,7 +992,12 @@ public class IntegrationTestUtils {
 
     private static StateListener getStateListener(final KafkaStreams streams) {
         try {
-            final Field field = streams.getClass().getDeclaredField("stateListener");
+            final Field field;
+            if (streams instanceof KafkaStreamsWrapper) {
+                field = KafkaStreamsWrapper.class.getSuperclass().getDeclaredField("stateListener");
+            } else {
+                field = streams.getClass().getDeclaredField("stateListener");
+            }
             field.setAccessible(true);
             return (StateListener) field.get(streams);
         } catch (final IllegalAccessException | NoSuchFieldException e) {

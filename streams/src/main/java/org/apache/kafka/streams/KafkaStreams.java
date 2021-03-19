@@ -458,7 +458,6 @@ public class KafkaStreams implements AutoCloseable {
             closeToError();
         }
         final StreamThread deadThread = (StreamThread) Thread.currentThread();
-        deadThread.shutdown();
         addStreamThread();
         if (throwable instanceof RuntimeException) {
             throw (RuntimeException) throwable;
@@ -1120,11 +1119,14 @@ public class KafkaStreams implements AutoCloseable {
 
         synchronized (threads) {
             processStreamThread(thread -> {
-                if (thread.state() == StreamThread.State.DEAD) {
-                    log.debug("Trimming thread {} from the threads list since it's state is {}", thread.getName(), StreamThread.State.DEAD);
+                if (!thread.isAlive()) {
+                    log.debug("Trimming thread which is no longer executing from the threads list");
+                    threads.remove(thread);
+                } else if (thread.state() == StreamThread.State.DEAD) {
+                    log.debug("Trimming thread {} from the threads list since its state is {}", thread.getName(), StreamThread.State.DEAD);
                     threads.remove(thread);
                 } else if (thread.state() == StreamThread.State.PENDING_SHUTDOWN) {
-                    log.debug("Skipping thread {} from num live threads computation since it's state is {}",
+                    log.debug("Skipping thread {} from num live threads computation since its state is {}",
                               thread.getName(), StreamThread.State.PENDING_SHUTDOWN);
                 } else {
                     numLiveThreads.incrementAndGet();
@@ -1141,7 +1143,11 @@ public class KafkaStreams implements AutoCloseable {
             processStreamThread(thread -> {
                 // trim any DEAD threads from the list so we can reuse the thread.id
                 // this is only safe to do once the thread has fully completed shutdown
-                if (thread.state() == StreamThread.State.DEAD) {
+                if (!thread.isAlive()) {
+                    log.debug("Trimming thread which is no longer executing from the threads list");
+                    threads.remove(thread);
+                } else if (thread.state() == StreamThread.State.DEAD) {
+                    log.debug("Trimming thread {} from the threads list since its state is {}", thread.getName(), StreamThread.State.DEAD);
                     threads.remove(thread);
                 } else {
                     allLiveThreadNames.add(thread.getName());
@@ -1249,7 +1255,12 @@ public class KafkaStreams implements AutoCloseable {
             stateDirCleaner.scheduleAtFixedRate(() -> {
                 // we do not use lock here since we only read on the value and act on it
                 if (state == State.RUNNING) {
-                    stateDirectory.cleanRemovedTasks(cleanupDelay);
+                    // Pass the cleanup thread a Function to get the currently alive threads so it can verify that no
+                    // task directories have been orphaned. The StateDirectory#cleanRemovedTasks is synchronized, so
+                    // even if we have a new thread started up right after we get the list of live threads it won't be
+                    // possible to result in a hostile takeover of its lock since it won't be able to lock any new
+                    // task directories until the cleanup thread is finished
+                    stateDirectory.cleanRemovedTasks(cleanupDelay, this::liveStreamThreadNames);
                 }
             }, cleanupDelay, cleanupDelay, TimeUnit.MILLISECONDS);
 
@@ -1266,6 +1277,16 @@ public class KafkaStreams implements AutoCloseable {
         } else {
             throw new IllegalStateException("The client is either already started or already stopped, cannot re-start");
         }
+    }
+
+    private Set<String> liveStreamThreadNames() {
+        final Set<String> liveThreads = new HashSet<>();
+        processStreamThread(thread -> {
+            if (thread.isAlive() && thread.isRunning()) {
+                liveThreads.add(thread.getName());
+            }
+        });
+        return liveThreads;
     }
 
     /**

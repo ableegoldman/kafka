@@ -16,13 +16,14 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
-
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.TaskId;
+
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,8 +56,8 @@ import static org.apache.kafka.streams.processor.internals.StateManagerUtil.CHEC
  * thread-safe.
  */
 public class StateDirectory {
-
-    private static final Pattern PATH_NAME = Pattern.compile("\\d+_\\d+");
+    // should match only task directories, excluding the global dir
+    private static final Pattern TASK_DIR_PATH_NAME = Pattern.compile("\\d+_\\d+");
     private static final Logger log = LoggerFactory.getLogger(StateDirectory.class);
     static final String LOCK_FILE_NAME = ".lock";
 
@@ -408,21 +409,30 @@ public class StateDirectory {
      * Remove the directories for any {@link TaskId}s that are no-longer
      * owned by this {@link StreamThread} and aren't locked by either
      * another process or another {@link StreamThread}
-     * @param cleanupDelayMs only remove directories if they haven't been modified for at least
-     *                       this amount of time (milliseconds)
+     * @param cleanupDelayMs        only remove directories if they haven't been modified for at least
+     *                              this amount of time (milliseconds)
+     * @param liveThreads           returns the list of names of all currently non-DEAD stream threads, used
+     *                              so we can clean up locks of any orphaned task directories
      */
-    public synchronized void cleanRemovedTasks(final long cleanupDelayMs) {
+    public synchronized void cleanRemovedTasks(final long cleanupDelayMs, final Supplier<Set<String>> liveThreads) {
         try {
-            cleanRemovedTasksCalledByCleanerThread(cleanupDelayMs);
+            cleanRemovedTasksCalledByCleanerThread(cleanupDelayMs, liveThreads);
         } catch (final Exception cannotHappen) {
             throw new IllegalStateException("Should have swallowed exception.", cannotHappen);
         }
     }
 
-    private void cleanRemovedTasksCalledByCleanerThread(final long cleanupDelayMs) {
+    private void cleanRemovedTasksCalledByCleanerThread(final long cleanupDelayMs, final Supplier<Set<String>> liveThreads) {
+        final Set<String> liveThreadNames = liveThreads.get();
         for (final File taskDir : listNonEmptyTaskDirectories()) {
             final String dirName = taskDir.getName();
             final TaskId id = TaskId.parse(dirName);
+
+            final String owningThread = lockedTasksToStreamThreadOwner.get(id);
+            if (owningThread != null && !liveThreadNames.contains(owningThread)) {
+                log.warn("Deleting lock for task directory {} since the thread owning the lock is gone: {}", id, owningThread);
+                lockedTasksToStreamThreadOwner.remove(id);
+            }
             if (!lockedTasksToStreamThreadOwner.containsKey(id)) {
                 try {
                     if (lock(id)) {
@@ -434,7 +444,7 @@ public class StateDirectory {
                             Utils.delete(taskDir, Collections.singletonList(new File(taskDir, LOCK_FILE_NAME)));
                         }
                     }
-                } catch (final OverlappingFileLockException | IOException exception) {
+                } catch (final IOException exception) {
                     log.warn(
                         String.format("%s Swallowed the following exception during deletion of obsolete state directory %s for task %s:",
                             logPrefix(), dirName, id),
@@ -503,7 +513,7 @@ public class StateDirectory {
         } else {
             taskDirectories =
                 stateDir.listFiles(pathname -> {
-                    if (!pathname.isDirectory() || !PATH_NAME.matcher(pathname.getName()).matches()) {
+                    if (!pathname.isDirectory() || !TASK_DIR_PATH_NAME.matcher(pathname.getName()).matches()) {
                         return false;
                     } else {
                         return !taskDirEmpty(pathname);
@@ -525,7 +535,7 @@ public class StateDirectory {
         } else {
             taskDirectories =
                 stateDir.listFiles(pathname -> pathname.isDirectory()
-                                                   && PATH_NAME.matcher(pathname.getName()).matches());
+                                                   && TASK_DIR_PATH_NAME.matcher(pathname.getName()).matches());
         }
 
         return taskDirectories == null ? new File[0] : taskDirectories;

@@ -60,7 +60,6 @@ public class JoinWithIncompleteMetadataIntegrationTest {
         CLUSTER.stop();
     }
 
-
     @Rule
     public final TemporaryFolder testFolder = new TemporaryFolder(TestUtils.tempDirectory());
 

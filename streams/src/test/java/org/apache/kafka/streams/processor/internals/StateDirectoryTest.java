@@ -281,7 +281,7 @@ public class StateDirectoryTest {
             assertEquals(mkSet(dir0, dir1, dir2), files);
 
             time.sleep(5000);
-            directory.cleanRemovedTasks(0);
+            directory.cleanRemovedTasks(0, () -> Collections.singleton(Thread.currentThread().getName()));
 
             files = Arrays.stream(
                 Objects.requireNonNull(directory.listAllTaskDirectories())).collect(Collectors.toSet());
@@ -302,13 +302,13 @@ public class StateDirectoryTest {
         assertTrue(new File(dir, "store").mkdir());
 
         final int cleanupDelayMs = 60000;
-        directory.cleanRemovedTasks(cleanupDelayMs);
+        directory.cleanRemovedTasks(cleanupDelayMs, Collections::emptySet);
         assertTrue(dir.exists());
         assertEquals(1, directory.listAllTaskDirectories().length);
         assertEquals(1, directory.listNonEmptyTaskDirectories().length);
 
         time.sleep(cleanupDelayMs + 1000);
-        directory.cleanRemovedTasks(cleanupDelayMs);
+        directory.cleanRemovedTasks(cleanupDelayMs, Collections::emptySet);
         assertTrue(dir.exists());
         assertEquals(1, directory.listAllTaskDirectories().length);
         assertEquals(0, directory.listNonEmptyTaskDirectories().length);
@@ -323,7 +323,7 @@ public class StateDirectoryTest {
 
         try (final LogCaptureAppender appender = LogCaptureAppender.createAndRegister(StateDirectory.class)) {
             time.sleep(5000);
-            directory.cleanRemovedTasks(0);
+            directory.cleanRemovedTasks(0, Collections::emptySet);
             assertTrue(dir.exists());
             assertEquals(1, directory.listAllTaskDirectories().length);
             assertEquals(0, directory.listNonEmptyTaskDirectories().length);
@@ -335,7 +335,7 @@ public class StateDirectoryTest {
 
         try (final LogCaptureAppender appender = LogCaptureAppender.createAndRegister(StateDirectory.class)) {
             time.sleep(5000);
-            directory.cleanRemovedTasks(0);
+            directory.cleanRemovedTasks(0, Collections::emptySet);
             assertTrue(dir.exists());
             assertEquals(1, directory.listAllTaskDirectories().length);
             assertEquals(0, directory.listNonEmptyTaskDirectories().length);
@@ -349,7 +349,7 @@ public class StateDirectoryTest {
     @Test
     public void shouldNotRemoveNonTaskDirectoriesAndFiles() {
         final File otherDir = TestUtils.tempDirectory(stateDir.toPath(), "foo");
-        directory.cleanRemovedTasks(0);
+        directory.cleanRemovedTasks(0, Collections::emptySet);
         assertTrue(otherDir.exists());
     }
 
@@ -604,7 +604,7 @@ public class StateDirectoryTest {
         try (final LogCaptureAppender appender = LogCaptureAppender.createAndRegister(StateDirectory.class)) {
             final long cleanupDelayMs = 0;
             time.sleep(5000);
-            directory.cleanRemovedTasks(cleanupDelayMs);
+            directory.cleanRemovedTasks(cleanupDelayMs, Collections::emptySet);
             assertThat(appender.getMessages(), hasItem(endsWith("ms has elapsed (cleanup delay is " + cleanupDelayMs + "ms).")));
         }
     }
