@@ -2045,6 +2045,11 @@ public class InternalTopologyBuilder {
         return maybeDecorateInternalSourceTopics(sourceTopicNames);
     }
 
+    public boolean hasNamedTopologies() {
+        // TODO
+        throw new UnsupportedOperationException();
+    }
+
     // following functions are for test only
     public synchronized Set<String> sourceTopicNames() {
         return sourceTopicNames;

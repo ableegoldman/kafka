@@ -19,37 +19,90 @@ package org.apache.kafka.streams.processor.internals.assignment;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.state.HostInfo;
-import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.stream.Collectors;
+import org.junit.Test;
+
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import static org.apache.kafka.common.utils.Utils.mkEntry;
 import static org.apache.kafka.common.utils.Utils.mkMap;
 import static org.apache.kafka.common.utils.Utils.mkSet;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_0_0;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_0_1;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_1_0;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_1_1;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_0_0;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_0_1;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_1_0;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_1_1;
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.LATEST_SUPPORTED_VERSION;
+import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.MIN_NAMED_TOPOLOGY_VERSION;
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.UNKNOWN;
+
+import static java.util.Arrays.asList;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 
+@RunWith(Parameterized.class)
 public class AssignmentInfoTest {
-    private final List<TaskId> activeTasks = Arrays.asList(
+
+    private static final TaskId[] ACTIVE_TASKS = new TaskId[]{
         TASK_0_0,
         TASK_0_1,
         TASK_1_0,
-        TASK_1_0);
+        TASK_1_1
+    };
 
-    private final Map<TaskId, Set<TopicPartition>> standbyTasks = mkMap(
-        mkEntry(TASK_1_0, mkSet(new TopicPartition("t1", 0), new TopicPartition("t2", 0))),
-        mkEntry(TASK_1_1, mkSet(new TopicPartition("t1", 1), new TopicPartition("t2", 1)))
-    );
+    private static final TaskId[] STANDBY_TASKS = new TaskId[]{
+        TASK_0_0,
+        TASK_0_1,
+        TASK_1_0,
+        TASK_1_1
+    };
+
+    private static final TaskId[] ACTIVE_TASKS_WITH_NAMED_TOPOLOGY = new TaskId[]{
+        NAMED_TASK_0_0,
+        NAMED_TASK_0_1,
+        NAMED_TASK_1_0,
+        NAMED_TASK_1_1
+    };
+
+    private static final TaskId[] STANDBY_TASKS_WITH_NAMED_TOPOLOGY = new TaskId[]{
+        NAMED_TASK_0_0,
+        NAMED_TASK_0_1,
+        NAMED_TASK_1_0,
+        NAMED_TASK_1_1
+    };
+
+    @Parameterized.Parameters
+    public static Collection<TaskId[][]> data() {
+        return asList(new TaskId[][][] {
+            {ACTIVE_TASKS, STANDBY_TASKS},
+            {ACTIVE_TASKS_WITH_NAMED_TOPOLOGY, STANDBY_TASKS_WITH_NAMED_TOPOLOGY}
+        });
+    }
+
+    private final List<TaskId> activeTasks;
+    private final Map<TaskId, Set<TopicPartition>> standbyTasks;
+
+    public AssignmentInfoTest(TaskId[] activeTasks, TaskId[] standbyTasks) {
+        this.activeTasks = Arrays.stream(activeTasks).collect(Collectors.toList());
+        this.standbyTasks = new HashMap<>();
+        int i = 0;
+        for (final TaskId task : standbyTasks) {
+            this.standbyTasks.put(task, mkSet(new TopicPartition("topic1", i), new TopicPartition("topic2", i)));
+            ++i;
+        }
+    }
 
     private final Map<HostInfo, Set<TopicPartition>> activeAssignment = mkMap(
         mkEntry(new HostInfo("localhost", 8088),
@@ -91,56 +144,94 @@ public class AssignmentInfoTest {
 
     @Test
     public void shouldEncodeAndDecodeVersion1() {
-        final AssignmentInfo info = new AssignmentInfo(1, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 0);
-        final AssignmentInfo expectedInfo = new AssignmentInfo(1, UNKNOWN, activeTasks, standbyTasks, Collections.emptyMap(), Collections.emptyMap(), 0);
+        final int version = 1;
+        final AssignmentInfo info = new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 0);
+        final AssignmentInfo expectedInfo = new AssignmentInfo(version, UNKNOWN, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), Collections.emptyMap(), Collections.emptyMap(), 0);
         assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
     }
 
     @Test
     public void shouldEncodeAndDecodeVersion2() {
-        final AssignmentInfo info = new AssignmentInfo(2, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 0);
-        final AssignmentInfo expectedInfo = new AssignmentInfo(2, UNKNOWN, activeTasks, standbyTasks, activeAssignment, Collections.emptyMap(), 0);
+        final int version = 2;
+        final AssignmentInfo info = new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 0);
+        final AssignmentInfo expectedInfo =
+            new AssignmentInfo(version, UNKNOWN, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, Collections.emptyMap(), 0);
         assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
     }
 
     @Test
     public void shouldEncodeAndDecodeVersion3() {
-        final AssignmentInfo info = new AssignmentInfo(3, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 0);
-        final AssignmentInfo expectedInfo = new AssignmentInfo(3, LATEST_SUPPORTED_VERSION, activeTasks, standbyTasks,
-            activeAssignment, Collections.emptyMap(), 0);
+        final int version = 3;
+        final AssignmentInfo info = new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 0);
+        final AssignmentInfo expectedInfo =
+            new AssignmentInfo(version, LATEST_SUPPORTED_VERSION, getActiveTaskListForVersion(version),arrayToStandbyTaskMap(version), activeAssignment, Collections.emptyMap(), 0);
         assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
     }
 
     @Test
     public void shouldEncodeAndDecodeVersion4() {
-        final AssignmentInfo info = new AssignmentInfo(4, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
-        final AssignmentInfo expectedInfo = new AssignmentInfo(4, LATEST_SUPPORTED_VERSION, activeTasks, standbyTasks,
-            activeAssignment, Collections.emptyMap(), 2);
+        final int version = 4;
+        final AssignmentInfo info = new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
+        final AssignmentInfo expectedInfo =
+            new AssignmentInfo(version, LATEST_SUPPORTED_VERSION, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, Collections.emptyMap(), 2);
         assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
     }
 
     @Test
     public void shouldEncodeAndDecodeVersion5() {
-        final AssignmentInfo info = new AssignmentInfo(5, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
-        final AssignmentInfo expectedInfo = new AssignmentInfo(5, LATEST_SUPPORTED_VERSION, activeTasks, standbyTasks,
-            activeAssignment, Collections.emptyMap(), 2);
+        final int version = 5;
+        final AssignmentInfo info = new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
+        final AssignmentInfo expectedInfo =
+            new AssignmentInfo(version, LATEST_SUPPORTED_VERSION, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, Collections.emptyMap(), 2);
         assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
     }
 
     @Test
     public void shouldEncodeAndDecodeVersion6() {
-        final AssignmentInfo info = new AssignmentInfo(6, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
-        final AssignmentInfo expectedInfo = new AssignmentInfo(6, LATEST_SUPPORTED_VERSION, activeTasks, standbyTasks,
-            activeAssignment, standbyAssignment, 2);
+        final int version = 6;
+        final AssignmentInfo info = new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
+        final AssignmentInfo expectedInfo =
+            new AssignmentInfo(version, LATEST_SUPPORTED_VERSION, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, standbyAssignment, 2);
         assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
     }
 
     @Test
     public void shouldEncodeAndDecodeVersion7() {
+        final int version = 7;
         final AssignmentInfo info =
-            new AssignmentInfo(7, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
+            new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
         final AssignmentInfo expectedInfo =
-            new AssignmentInfo(7, LATEST_SUPPORTED_VERSION, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
+            new AssignmentInfo(version, LATEST_SUPPORTED_VERSION, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, standbyAssignment, 2);
+        assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
+    }
+
+    @Test
+    public void shouldEncodeAndDecodeVersion8() {
+        final int version = 8;
+        final AssignmentInfo info =
+            new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
+        final AssignmentInfo expectedInfo =
+            new AssignmentInfo(version, LATEST_SUPPORTED_VERSION, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, standbyAssignment, 2);
+        assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
+    }
+
+    @Test
+    public void shouldEncodeAndDecodeVersion9() {
+        final int version = 9;
+        final AssignmentInfo info =
+            new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
+        final AssignmentInfo expectedInfo =
+            new AssignmentInfo(version, LATEST_SUPPORTED_VERSION, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, standbyAssignment, 2);
+        assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
+    }
+
+    @Test
+    public void shouldEncodeAndDecodeVersion10() {
+        final int version = 10;
+        final AssignmentInfo info =
+            new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 2);
+        final AssignmentInfo expectedInfo =
+            new AssignmentInfo(version, LATEST_SUPPORTED_VERSION, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, standbyAssignment, 2);
         assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
     }
 
@@ -150,27 +241,60 @@ public class AssignmentInfoTest {
         final int commonlySupportedVersion = 5;
         final AssignmentInfo info = new AssignmentInfo(usedVersion, commonlySupportedVersion, activeTasks, standbyTasks,
             activeAssignment, standbyAssignment, 2);
-        final AssignmentInfo expectedInfo = new AssignmentInfo(usedVersion, commonlySupportedVersion, activeTasks, standbyTasks,
-            activeAssignment, Collections.emptyMap(), 2);
+        final AssignmentInfo expectedInfo =
+            new AssignmentInfo(usedVersion, commonlySupportedVersion, getActiveTaskListForVersion(usedVersion), arrayToStandbyTaskMap(usedVersion), activeAssignment, Collections.emptyMap(), 2);
         assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
     }
 
     @Test
     public void nextRebalanceTimeShouldBeMaxValueByDefault() {
-        final AssignmentInfo info = new AssignmentInfo(7, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 0);
+        final int version = 7;
+        final AssignmentInfo info = new AssignmentInfo(version, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, standbyAssignment, 0);
         assertEquals(info.nextRebalanceMs(), Long.MAX_VALUE);
     }
 
     @Test
     public void shouldDecodeDefaultNextRebalanceTime() {
-        final AssignmentInfo info = new AssignmentInfo(7, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 0);
+        final int version = 7;
+        final AssignmentInfo info = new AssignmentInfo(version, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, standbyAssignment, 0);
         assertEquals(info.nextRebalanceMs(), Long.MAX_VALUE);
     }
 
     @Test
     public void shouldEncodeAndDecodeNextRebalanceTime() {
-        final AssignmentInfo info = new AssignmentInfo(7, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 0);
+        final int version = 7;
+        final AssignmentInfo info = new AssignmentInfo(version, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, standbyAssignment, 0);
         info.setNextRebalanceTime(1000L);
         assertEquals(1000L, AssignmentInfo.decode(info.encode()).nextRebalanceMs());
     }
+
+    /**
+     * @return the list of active tasks with or without the named topology depending on the version used to encode
+     */
+    private List<TaskId> getActiveTaskListForVersion(final int version) {
+        if (version >= MIN_NAMED_TOPOLOGY_VERSION) {
+            return activeTasks;
+        } else {
+            return Arrays.stream(ACTIVE_TASKS).collect(Collectors.toList());
+        }
+    }
+
+    /**
+     * @return the map of standby tasks with or without the named topology depending on the version used to encode
+     */
+    private Map<TaskId, Set<TopicPartition>> arrayToStandbyTaskMap(final int version) {
+        if (version >= MIN_NAMED_TOPOLOGY_VERSION) {
+            return standbyTasks;
+        } else {
+            final Map<TaskId, Set<TopicPartition>> standbyTasksWithoutNamedTopology = new HashMap<>();
+            int i = 0;
+            for (final TaskId task : STANDBY_TASKS) {
+                standbyTasksWithoutNamedTopology.put(task, mkSet(new TopicPartition("topic1", i), new TopicPartition("topic2", i)));
+                ++i;
+            }
+            return standbyTasksWithoutNamedTopology;
+        }
+    }
+
+
 }
