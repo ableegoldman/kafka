@@ -26,7 +26,7 @@ public class NamedTopologyStreamsBuilder extends StreamsBuilder {
     final String topologyName;
 
     /**
-     * @param topologyName  any string representing your NamedTopology, all characters allowed except for "__"
+     * @param topologyName              any string representing your NamedTopology, all characters allowed but "__"
      * @throws IllegalArgumentException if the name contains the character sequence "__"
      */
     public NamedTopologyStreamsBuilder(final String topologyName) {
