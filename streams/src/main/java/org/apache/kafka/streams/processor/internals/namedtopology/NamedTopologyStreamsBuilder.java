@@ -22,7 +22,6 @@ import org.apache.kafka.streams.Topology;
 import java.util.Properties;
 
 public class NamedTopologyStreamsBuilder extends StreamsBuilder {
-
     final String topologyName;
 
     public NamedTopologyStreamsBuilder(final String topologyName) {
@@ -39,6 +38,10 @@ public class NamedTopologyStreamsBuilder extends StreamsBuilder {
 
     @Override
     public Topology getNewTopology() {
+        return new NamedTopology();
+    }
+
+    static NamedTopology emptyTopology() {
         return new NamedTopology();
     }
 }

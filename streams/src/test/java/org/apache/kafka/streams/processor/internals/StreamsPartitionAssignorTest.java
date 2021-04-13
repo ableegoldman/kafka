@@ -190,6 +190,7 @@ public class StreamsPartitionAssignorTest {
     private TaskManager taskManager;
     private Admin adminClient;
     private InternalTopologyBuilder builder = new InternalTopologyBuilder();
+    private TopologyMetadata topologyMetadata = new TopologyMetadata(builder);
     private StreamsMetadataState streamsMetadataState = EasyMock.createNiceMock(StreamsMetadataState.class);
     private final Map<String, Subscription> subscriptions = new HashMap<>();
     private final Class<? extends TaskAssignor> taskAssignor;
@@ -240,11 +241,11 @@ public class StreamsPartitionAssignorTest {
     private void createMockTaskManager(final Set<TaskId> activeTasks,
                                        final Set<TaskId> standbyTasks) {
         taskManager = EasyMock.createNiceMock(TaskManager.class);
-        expect(taskManager.builder()).andStubReturn(builder);
+        expect(taskManager.topologyMetadata()).andStubReturn(topologyMetadata);
         expect(taskManager.getTaskOffsetSums()).andStubReturn(getTaskOffsetSums(activeTasks, standbyTasks));
         expect(taskManager.processId()).andStubReturn(UUID_1);
         builder.setApplicationId(APPLICATION_ID);
-        builder.buildTopology();
+        topologyMetadata.rewriteAndBuildTopology(new StreamsConfig(configProps()));
     }
 
     // If mockCreateInternalTopics is true the internal topic manager will report that it had to create all internal

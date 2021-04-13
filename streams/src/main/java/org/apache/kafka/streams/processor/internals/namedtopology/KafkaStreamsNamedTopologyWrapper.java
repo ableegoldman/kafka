@@ -16,16 +16,32 @@
  */
 package org.apache.kafka.streams.processor.internals.namedtopology;
 
+import org.apache.kafka.common.annotation.InterfaceStability.Evolving;
 import org.apache.kafka.streams.KafkaClientSupplier;
 import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.processor.internals.TopologyMetadata;
 
+import java.util.List;
 import java.util.Properties;
+import java.util.stream.Collectors;
 
+/**
+ * Note: global stores are not currently supported with NamedTopologies
+ */
+@Evolving
 public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
 
-    //TODO It should be possible to start up streams with no NamedTopology (or regular Topology) at all, in the meantime we can just pass in an empty NamedTopology
     public KafkaStreamsNamedTopologyWrapper(final NamedTopology topology, final Properties props, final KafkaClientSupplier clientSupplier) {
-        super(topology, props, clientSupplier);
+        super(new TopologyMetadata(topology.getInternalTopologyBuilder()), new StreamsConfig(props), clientSupplier);
+    }
+
+    public KafkaStreamsNamedTopologyWrapper(final Properties props, final KafkaClientSupplier clientSupplier) {
+        super(new TopologyMetadata(NamedTopologyStreamsBuilder.emptyTopology().getInternalTopologyBuilder()), new StreamsConfig(props), clientSupplier);
+    }
+
+    public KafkaStreamsNamedTopologyWrapper(final List<NamedTopology> topologies, final Properties props, final KafkaClientSupplier clientSupplier) {
+        super(new TopologyMetadata(topologies.stream().collect(Collectors.toMap(NamedTopology::name, NamedTopology::getInternalTopologyBuilder))), new StreamsConfig(props), clientSupplier);
     }
 
     public NamedTopology getTopologyByName(final String name) {

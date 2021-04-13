@@ -188,7 +188,7 @@ public class TaskManagerTest {
             new StreamsMetricsImpl(new Metrics(), "clientId", StreamsConfig.METRICS_LATEST, time),
             activeTaskCreator,
             standbyTaskCreator,
-            topologyBuilder,
+            new TopologyMetadata(topologyBuilder),
             adminClient,
             stateDirectory,
             processingMode

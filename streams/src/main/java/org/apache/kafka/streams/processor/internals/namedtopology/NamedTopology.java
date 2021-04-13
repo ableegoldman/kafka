@@ -17,6 +17,8 @@
 package org.apache.kafka.streams.processor.internals.namedtopology;
 
 import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,5 +43,10 @@ public class NamedTopology extends Topology {
 
     public List<String> sourceTopics() {
         return super.internalTopologyBuilder.fullSourceTopicNames();
+    }
+
+    @Override
+    protected InternalTopologyBuilder getInternalTopologyBuilder() {
+        return new InternalTopologyBuilder(name);
     }
 }

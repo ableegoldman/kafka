@@ -115,7 +115,7 @@ public class RepartitionTopicsTest {
         setupCluster();
         replay(internalTopicManager, internalTopologyBuilder, clusterMetadata);
         final RepartitionTopics repartitionTopics = new RepartitionTopics(
-            internalTopologyBuilder,
+            new TopologyMetadata(internalTopologyBuilder),
             internalTopicManager,
             copartitionedTopicsEnforcer,
             clusterMetadata,
@@ -149,7 +149,7 @@ public class RepartitionTopicsTest {
         setupClusterWithMissingTopics(mkSet(SOURCE_TOPIC_NAME1));
         replay(internalTopicManager, internalTopologyBuilder, clusterMetadata);
         final RepartitionTopics repartitionTopics = new RepartitionTopics(
-            internalTopologyBuilder,
+            new TopologyMetadata(internalTopologyBuilder),
             internalTopicManager,
             copartitionedTopicsEnforcer,
             clusterMetadata,
@@ -178,7 +178,7 @@ public class RepartitionTopicsTest {
         setupCluster();
         replay(internalTopicManager, internalTopologyBuilder, clusterMetadata);
         final RepartitionTopics repartitionTopics = new RepartitionTopics(
-            internalTopologyBuilder,
+            new TopologyMetadata(internalTopologyBuilder),
             internalTopicManager,
             copartitionedTopicsEnforcer,
             clusterMetadata,
@@ -216,7 +216,7 @@ public class RepartitionTopicsTest {
         setupClusterWithMissingPartitionCounts(mkSet(SOURCE_TOPIC_NAME1));
         replay(internalTopicManager, internalTopologyBuilder, clusterMetadata);
         final RepartitionTopics repartitionTopics = new RepartitionTopics(
-            internalTopologyBuilder,
+            new TopologyMetadata(internalTopologyBuilder),
             internalTopicManager,
             copartitionedTopicsEnforcer,
             clusterMetadata,
@@ -261,7 +261,7 @@ public class RepartitionTopicsTest {
         setupCluster();
         replay(internalTopicManager, internalTopologyBuilder, clusterMetadata);
         final RepartitionTopics repartitionTopics = new RepartitionTopics(
-            internalTopologyBuilder,
+            new TopologyMetadata(internalTopologyBuilder),
             internalTopicManager,
             copartitionedTopicsEnforcer,
             clusterMetadata,
@@ -315,7 +315,7 @@ public class RepartitionTopicsTest {
         setupCluster();
         replay(internalTopicManager, internalTopologyBuilder, clusterMetadata);
         final RepartitionTopics repartitionTopics = new RepartitionTopics(
-            internalTopologyBuilder,
+            new TopologyMetadata(internalTopologyBuilder),
             internalTopicManager,
             copartitionedTopicsEnforcer,
             clusterMetadata,
@@ -354,7 +354,7 @@ public class RepartitionTopicsTest {
         setupCluster();
         replay(internalTopicManager, internalTopologyBuilder, clusterMetadata);
         final RepartitionTopics repartitionTopics = new RepartitionTopics(
-            internalTopologyBuilder,
+            new TopologyMetadata(internalTopologyBuilder),
             internalTopicManager,
             copartitionedTopicsEnforcer,
             clusterMetadata,
