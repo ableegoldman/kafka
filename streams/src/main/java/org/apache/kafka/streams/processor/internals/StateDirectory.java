@@ -16,7 +16,6 @@
  */
 package org.apache.kafka.streams.processor.internals;
 
-
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.StreamsConfig;
@@ -28,9 +27,7 @@ import java.io.FileFilter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,6 +61,7 @@ import static org.apache.kafka.streams.processor.internals.StateManagerUtil.CHEC
 public class StateDirectory {
 
     private static final Pattern TASK_DIR_PATH_NAME = Pattern.compile("\\d+_\\d+");
+    private static final Pattern NAMED_TOPOLOGY_DIR_PATH_NAME = Pattern.compile("__\\.+__");
     private static final Logger log = LoggerFactory.getLogger(StateDirectory.class);
     static final String LOCK_FILE_NAME = ".lock";
 
@@ -144,8 +142,8 @@ public class StateDirectory {
     }
 
     public StateDirectory(final StreamsConfig config, final Time time, final boolean hasPersistentStores) {
-        //TODO
-        throw new UnsupportedOperationException();
+        //TODO Explicitly set hasNamedTopology appropriately in each test and remove this
+        this(config, time, hasPersistentStores, false);
     }
 
     private void configurePermissions(final File file) {
@@ -224,24 +222,33 @@ public class StateDirectory {
     /**
      * Get or create the directory for the provided {@link TaskId}.
      * @return directory for the {@link TaskId}
-     * @throws ProcessorStateException if the task directory does not exists and could not be created
+     * @throws ProcessorStateException if the task directory does not exist and could not be created
      */
     public File getOrCreateDirectoryForTask(final TaskId taskId) {
-        // TODO set up named topology directory structure with task subdirectories
-        final File taskDir = new File(stateDir, taskId.toString());
+        final File taskParentDir = getTaskDirectoryParentName(taskId);
+        final File taskDir = new File(taskParentDir, taskId.toString());
         if (hasPersistentStores && !taskDir.exists()) {
             synchronized (taskDirCreationLock) {
                 // to avoid a race condition, we need to check again if the directory does not exist:
                 // otherwise, two threads might pass the outer `if` (and enter the `then` block),
                 // one blocks on `synchronized` while the other creates the directory,
                 // and the blocking one fails when trying to create it after it's unblocked
-                if (!taskDir.exists() && !taskDir.mkdir()) {
+                if (!taskParentDir.exists() && !taskParentDir.mkdir() &&
+                    !taskDir.exists() && !taskDir.mkdir()) {
                     throw new ProcessorStateException(
                         String.format("task directory [%s] doesn't exist and couldn't be created", taskDir.getPath()));
                 }
             }
         }
         return taskDir;
+    }
+
+    private File getTaskDirectoryParentName(final TaskId taskId) {
+        if (taskId.namedTopology().isPresent()) {
+            return new File(stateDir, "__" + taskId.namedTopology().get() + "__");
+        } else {
+            return stateDir;
+        }
     }
 
     /**
@@ -429,6 +436,23 @@ public class StateDirectory {
                 }
             }
         }
+        maybeCleanEmptyNamedTopologyDirs();
+    }
+
+    private void maybeCleanEmptyNamedTopologyDirs() {
+        if (hasNamedTopologies) {
+            final File[] namedTopologyDirs = stateDir.listFiles(pathname ->
+                    pathname.isDirectory() && NAMED_TOPOLOGY_DIR_PATH_NAME.matcher(pathname.getName()).matches()
+            );
+            if (namedTopologyDirs != null) {
+                for (final File namedTopologyDir : namedTopologyDirs) {
+                    final File[] contents = namedTopologyDir.listFiles();
+                    if (contents != null && contents.length != 0 && !namedTopologyDir.delete()) {
+                        log.warn("Unable to delete empty topology dir {}", namedTopologyDir.getName());
+                    }
+                }
+            }
+        }
     }
 
     private void cleanRemovedTasksCalledByUser() throws Exception {
@@ -471,6 +495,7 @@ public class StateDirectory {
                 }
             }
         }
+        maybeCleanEmptyNamedTopologyDirs();
         final Exception exception = firstException.get();
         if (exception != null) {
             throw exception;

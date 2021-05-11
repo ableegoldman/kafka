@@ -94,7 +94,7 @@ public class AssignmentInfoTest {
     private final List<TaskId> activeTasks;
     private final Map<TaskId, Set<TopicPartition>> standbyTasks;
 
-    public AssignmentInfoTest(TaskId[] activeTasks, TaskId[] standbyTasks) {
+    public AssignmentInfoTest(final TaskId[] activeTasks, final TaskId[] standbyTasks) {
         this.activeTasks = Arrays.stream(activeTasks).collect(Collectors.toList());
         this.standbyTasks = new HashMap<>();
         int i = 0;
@@ -164,7 +164,7 @@ public class AssignmentInfoTest {
         final int version = 3;
         final AssignmentInfo info = new AssignmentInfo(version, activeTasks, standbyTasks, activeAssignment, standbyAssignment, 0);
         final AssignmentInfo expectedInfo =
-            new AssignmentInfo(version, LATEST_SUPPORTED_VERSION, getActiveTaskListForVersion(version),arrayToStandbyTaskMap(version), activeAssignment, Collections.emptyMap(), 0);
+            new AssignmentInfo(version, LATEST_SUPPORTED_VERSION, getActiveTaskListForVersion(version), arrayToStandbyTaskMap(version), activeAssignment, Collections.emptyMap(), 0);
         assertEquals(expectedInfo, AssignmentInfo.decode(info.encode()));
     }
 

@@ -35,6 +35,7 @@ import org.apache.kafka.streams.processor.internals.StateDirectory.TaskDirectory
 import org.apache.kafka.streams.processor.internals.testutil.LogCaptureAppender;
 import org.apache.kafka.streams.state.internals.OffsetCheckpoint;
 import org.apache.kafka.test.TestUtils;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -93,7 +94,7 @@ public class StateDirectoryTest {
     private StateDirectory directory;
     private File appDir;
 
-    private void initializeStateDirectory(final boolean createStateDirectory) throws IOException {
+    private void initializeStateDirectory(final boolean createStateDirectory, final boolean hasNamedTopology) throws IOException {
         stateDir = new File(TestUtils.IO_TMP_DIR, "kafka-" + TestUtils.randomString(5));
         if (!createStateDirectory) {
             cleanup();
@@ -106,13 +107,13 @@ public class StateDirectoryTest {
                     put(StreamsConfig.STATE_DIR_CONFIG, stateDir.getPath());
                 }
             }),
-            time, createStateDirectory);
+            time, createStateDirectory, hasNamedTopology);
         appDir = new File(stateDir, applicationId);
     }
 
     @Before
     public void before() throws IOException {
-        initializeStateDirectory(true);
+        initializeStateDirectory(true, false);
     }
 
     @After
@@ -346,7 +347,7 @@ public class StateDirectoryTest {
 
     @Test
     public void shouldReturnEmptyArrayForNonPersistentApp() throws IOException {
-        initializeStateDirectory(false);
+        initializeStateDirectory(false, false);
         assertTrue(directory.listAllTaskDirectories().isEmpty());
     }
 
@@ -416,6 +417,26 @@ public class StateDirectoryTest {
     }
 
     @Test
+    public void shouldRemoveEmptyNamedTopologyDirs() throws Exception {
+        initializeStateDirectory(true, true);
+        final File namedDir = new File(stateDir, "__my-named-topology__");
+        assertThat(namedDir.mkdir(), is(true));
+        assertThat(namedDir.exists(), is(true));
+        directory.clean();
+        assertThat(namedDir.exists(), is(false));
+    }
+
+    @Test
+    public void shouldNotRemoveEmptyDirsThatDontMatchNamedTopologyDirs() throws Exception {
+        initializeStateDirectory(true, true);
+        final File someDir = new File(stateDir, "_not-a-valid-named-topology_");
+        assertThat(someDir.mkdir(), is(true));
+        assertThat(someDir.exists(), is(true));
+        directory.clean();
+        assertThat(someDir.exists(), is(true));
+    }
+
+    @Test
     public void shouldNotLockStateDirLockedByAnotherThread() throws Exception {
         final TaskId taskId = new TaskId(0, 0);
         final Thread thread = new Thread(() -> directory.lock(taskId));
@@ -474,7 +495,7 @@ public class StateDirectoryTest {
     @Test
     public void shouldNotCreateBaseDirectory() throws IOException {
         try (final LogCaptureAppender appender = LogCaptureAppender.createAndRegister(StateDirectory.class)) {
-            initializeStateDirectory(false);
+            initializeStateDirectory(false, false);
             assertThat(stateDir.exists(), is(false));
             assertThat(appDir.exists(), is(false));
             assertThat(appender.getMessages(),
@@ -484,7 +505,7 @@ public class StateDirectoryTest {
 
     @Test
     public void shouldNotCreateTaskStateDirectory() throws IOException {
-        initializeStateDirectory(false);
+        initializeStateDirectory(false, false);
         final TaskId taskId = new TaskId(0, 0);
         final File taskDirectory = directory.getOrCreateDirectoryForTask(taskId);
         assertFalse(taskDirectory.exists());
@@ -492,14 +513,14 @@ public class StateDirectoryTest {
 
     @Test
     public void shouldNotCreateGlobalStateDirectory() throws IOException {
-        initializeStateDirectory(false);
+        initializeStateDirectory(false, false);
         final File globalStateDir = directory.globalStateDir();
         assertFalse(globalStateDir.exists());
     }
 
     @Test
     public void shouldLockTaskStateDirectoryWhenDirectoryCreationDisabled() throws IOException {
-        initializeStateDirectory(false);
+        initializeStateDirectory(false, false);
         final TaskId taskId = new TaskId(0, 0);
         assertTrue(directory.lock(taskId));
     }
@@ -570,7 +591,8 @@ public class StateDirectoryTest {
                     )
                 ),
                 new MockTime(),
-                true
+                true,
+                false
             );
             assertThat(
                 appender.getMessages(),
