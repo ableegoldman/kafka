@@ -248,8 +248,8 @@ public class StateDirectory {
     }
 
     private File getTaskDirectoryParentName(final TaskId taskId) {
-        if (taskId.namedTopology().isPresent()) {
-            return new File(stateDir, "__" + taskId.namedTopology().get() + "__");
+        if (taskId.namedTopology() != null) {
+            return new File(stateDir, "__" + taskId.namedTopology() + "__");
         } else {
             return stateDir;
         }

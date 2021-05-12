@@ -95,8 +95,8 @@ public class SubscriptionInfo {
 
         if (version >= 2) {
             data.setUserEndPoint(userEndPoint == null
-                                     ? new byte[0]
-                                     : userEndPoint.getBytes(StandardCharsets.UTF_8));
+                    ? new byte[0]
+                    : userEndPoint.getBytes(StandardCharsets.UTF_8));
         }
         if (version >= 3) {
             data.setLatestSupportedVersion(latestSupportedVersion);
@@ -110,7 +110,9 @@ public class SubscriptionInfo {
 
         this.data = data;
 
-        if (version >= MIN_VERSION_OFFSET_SUM_SUBSCRIPTION) {
+        if (version >= MIN_NAMED_TOPOLOGY_VERSION) {
+            setTaskOffsetSumDataWithNamedTopologiesFromTaskOffsetSumMap(taskOffsetSums);
+        } else if (version >= MIN_VERSION_OFFSET_SUM_SUBSCRIPTION) {
             setTaskOffsetSumDataFromTaskOffsetSumMap(taskOffsetSums);
         } else {
             setPrevAndStandbySetsFromParsedTaskOffsetSumMap(taskOffsetSums);
@@ -126,6 +128,29 @@ public class SubscriptionInfo {
         return data.errorCode();
     }
 
+    // For version > MIN_NAMED_TOPOLOGY_VERSION
+    private void setTaskOffsetSumDataWithNamedTopologiesFromTaskOffsetSumMap(final Map<TaskId, Long> taskOffsetSums) {
+        final Map<Integer, List<SubscriptionInfoData.PartitionToOffsetSum>> topicGroupIdToPartitionOffsetSum = new HashMap<>();
+        for (final Map.Entry<TaskId, Long> taskEntry : taskOffsetSums.entrySet()) {
+            final TaskId task = taskEntry.getKey();
+            topicGroupIdToPartitionOffsetSum.computeIfAbsent(task.topicGroupId, t -> new ArrayList<>()).add(
+                    new SubscriptionInfoData.PartitionToOffsetSum()
+                            .setPartition(task.partition)
+                            .setOffsetSum(taskEntry.getValue()));
+        }
+
+        data.setTaskOffsetSums(taskOffsetSums.entrySet().stream().map(t -> {
+            final SubscriptionInfoData.TaskOffsetSum taskOffsetSum = new SubscriptionInfoData.TaskOffsetSum();
+            final TaskId task = t.getKey();
+            taskOffsetSum.setTopicGroupId(task.topicGroupId);
+            taskOffsetSum.setPartition(task.partition);
+            taskOffsetSum.setNamedTopology(task.namedTopology());
+            taskOffsetSum.setOffsetSum(t.getValue());
+            return taskOffsetSum;
+        }).collect(Collectors.toList()));
+    }
+
+    // For MIN_NAMED_TOPOLOGY_VERSION > version > MIN_VERSION_OFFSET_SUM_SUBSCRIPTION
     private void setTaskOffsetSumDataFromTaskOffsetSumMap(final Map<TaskId, Long> taskOffsetSums) {
         final Map<Integer, List<SubscriptionInfoData.PartitionToOffsetSum>> topicGroupIdToPartitionOffsetSum = new HashMap<>();
         for (final Map.Entry<TaskId, Long> taskEntry : taskOffsetSums.entrySet()) {
@@ -144,6 +169,7 @@ public class SubscriptionInfo {
         }).collect(Collectors.toList()));
     }
 
+    // For MIN_VERSION_OFFSET_SUM_SUBSCRIPTION > version
     private void setPrevAndStandbySetsFromParsedTaskOffsetSumMap(final Map<TaskId, Long> taskOffsetSums) {
         final Set<TaskId> prevTasks = new HashSet<>();
         final Set<TaskId> standbyTasks = new HashSet<>();
