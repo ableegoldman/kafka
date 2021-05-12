@@ -2047,7 +2047,7 @@ public class InternalTopologyBuilder {
 
     public boolean hasNamedTopologies() {
         // TODO
-        throw new UnsupportedOperationException();
+        return false;
     }
 
     // following functions are for test only
