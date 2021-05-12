@@ -538,7 +538,7 @@ public class StateDirectory {
                         final File[] taskDirs = namedTopologyDir.listFiles(filter);
                         if (taskDirs != null) {
                             taskDirectories.addAll(Arrays.stream(taskDirs)
-                                                       .map(f -> makeTaskDirectory(f, namedTopologyDir.getName())).collect(Collectors.toList()));
+                                                       .map(f -> new TaskDirectory(f, namedTopologyDir.getName())).collect(Collectors.toList()));
                         }
                     }
                 }
@@ -547,7 +547,7 @@ public class StateDirectory {
                     stateDir.listFiles(filter);
                 if (taskDirs != null) {
                     taskDirectories.addAll(Arrays.stream(taskDirs)
-                                               .map(f -> makeTaskDirectory(f, null)).collect(Collectors.toList()));
+                                               .map(f -> new TaskDirectory(f, null)).collect(Collectors.toList()));
                 }
             }
         }
@@ -563,22 +563,13 @@ public class StateDirectory {
         }
     }
 
-    // Helper method to avoid passing in hasNamedTopologies all the time
-    public TaskDirectory makeTaskDirectory(final File file, final String namedTopology) {
-        return new TaskDirectory(file, namedTopology, hasNamedTopologies);
-    }
-
     public static class TaskDirectory {
         private final File file;
         private final String namedTopology; // may be null if hasNamedTopologies = false
 
-        TaskDirectory(final File file, final String namedTopology, final boolean hasNamedTopologies) {
+        TaskDirectory(final File file, final String namedTopology) {
             this.file = file;
             this.namedTopology = namedTopology;
-            if (namedTopology == null && hasNamedTopologies) {
-                log.error("Tried to construct TaskDirectory for application with named topologies, but no named topology was passed in for {}", file.getPath());
-                throw new IllegalStateException("Task directory " + file.getPath() + " should have an associated named topology");
-            }
         }
 
         public File file() {

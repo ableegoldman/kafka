@@ -255,9 +255,9 @@ public class StateDirectoryTest {
             directory.lock(task0);
             directory.lock(task1);
 
-            final TaskDirectory dir0 = directory.makeTaskDirectory(new File(appDir, task0.toTaskDirString()), null);
-            final TaskDirectory dir1 = directory.makeTaskDirectory(new File(appDir, task1.toTaskDirString()), null);
-            final TaskDirectory dir2 = directory.makeTaskDirectory(new File(appDir, task2.toTaskDirString()), null);
+            final TaskDirectory dir0 = new TaskDirectory(new File(appDir, task0.toTaskDirString()), null);
+            final TaskDirectory dir1 = new TaskDirectory(new File(appDir, task1.toTaskDirString()), null);
+            final TaskDirectory dir2 = new TaskDirectory(new File(appDir, task2.toTaskDirString()), null);
 
             List<TaskDirectory> files = directory.listAllTaskDirectories();
             assertEquals(mkSet(dir0, dir1, dir2), new HashSet<>(files));
@@ -362,8 +362,8 @@ public class StateDirectoryTest {
     @Test
     public void shouldOnlyListNonEmptyTaskDirectories() throws IOException {
         TestUtils.tempDirectory(stateDir.toPath(), "foo");
-        final TaskDirectory taskDir1 = directory.makeTaskDirectory(directory.getOrCreateDirectoryForTask(new TaskId(0, 0)), null);
-        final TaskDirectory taskDir2 = directory.makeTaskDirectory(directory.getOrCreateDirectoryForTask(new TaskId(0, 1)), null);
+        final TaskDirectory taskDir1 = new TaskDirectory(directory.getOrCreateDirectoryForTask(new TaskId(0, 0)), null);
+        final TaskDirectory taskDir2 = new TaskDirectory(directory.getOrCreateDirectoryForTask(new TaskId(0, 1)), null);
 
         final File storeDir = new File(taskDir1.file(), "store");
         assertTrue(storeDir.mkdir());
