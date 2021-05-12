@@ -42,10 +42,8 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
 import java.util.Arrays;
@@ -63,7 +61,6 @@ import java.util.stream.Collectors;
 import static org.apache.kafka.common.utils.Utils.mkEntry;
 import static org.apache.kafka.common.utils.Utils.mkMap;
 import static org.apache.kafka.common.utils.Utils.mkSet;
-import static org.apache.kafka.streams.processor.internals.StateDirectory.LOCK_FILE_NAME;
 import static org.apache.kafka.streams.processor.internals.StateDirectory.PROCESS_FILE_NAME;
 import static org.apache.kafka.streams.processor.internals.StateManagerUtil.CHECKPOINT_FILE_NAME;
 
@@ -246,24 +243,6 @@ public class StateDirectoryTest {
     }
 
     @Test
-    public void shouldReleaseTaskStateDirectoryLock() throws IOException {
-        final TaskId taskId = new TaskId(0, 0);
-        final File taskDirectory = directory.getOrCreateDirectoryForTask(taskId);
-
-        directory.lock(taskId);
-        directory.unlock(taskId);
-
-        try (
-            final FileChannel channel = FileChannel.open(
-                new File(taskDirectory, LOCK_FILE_NAME).toPath(),
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE)
-        ) {
-            channel.tryLock();
-        }
-    }
-
-    @Test
     public void shouldCleanUpTaskStateDirectoriesThatAreNotCurrentlyLocked() {
         final TaskId task0 = new TaskId(0, 0);
         final TaskId task1 = new TaskId(1, 0);
@@ -313,7 +292,7 @@ public class StateDirectoryTest {
 
         time.sleep(cleanupDelayMs + 1000);
         directory.cleanRemovedTasks(cleanupDelayMs);
-        assertTrue(dir.exists());
+        assertFalse(dir.exists());
         assertEquals(0, directory.listAllTaskDirectories().size());
         assertEquals(0, directory.listNonEmptyTaskDirectories().size());
     }
@@ -328,7 +307,7 @@ public class StateDirectoryTest {
         try (final LogCaptureAppender appender = LogCaptureAppender.createAndRegister(StateDirectory.class)) {
             time.sleep(5000);
             directory.cleanRemovedTasks(0);
-            assertTrue(dir.exists());
+            assertFalse(dir.exists());
             assertEquals(0, directory.listAllTaskDirectories().size());
             assertEquals(0, directory.listNonEmptyTaskDirectories().size());
             assertThat(
@@ -394,7 +373,7 @@ public class StateDirectoryTest {
 
         Utils.delete(taskDir1.file());
 
-        assertEquals(asList(taskDir1, taskDir2), directory.listAllTaskDirectories());
+        assertEquals(singletonList(taskDir2), directory.listAllTaskDirectories());
         assertEquals(emptyList(), directory.listNonEmptyTaskDirectories());
     }
 
@@ -419,7 +398,7 @@ public class StateDirectoryTest {
     @Test
     public void shouldRemoveEmptyNamedTopologyDirs() throws Exception {
         initializeStateDirectory(true, true);
-        final File namedDir = new File(stateDir, "__my-named-topology__");
+        final File namedDir = new File(appDir, "__my-named-topology__");
         assertThat(namedDir.mkdir(), is(true));
         assertThat(namedDir.exists(), is(true));
         directory.clean();
@@ -429,7 +408,7 @@ public class StateDirectoryTest {
     @Test
     public void shouldNotRemoveEmptyDirsThatDontMatchNamedTopologyDirs() throws Exception {
         initializeStateDirectory(true, true);
-        final File someDir = new File(stateDir, "_not-a-valid-named-topology_");
+        final File someDir = new File(appDir, "_not-a-valid-named-topology_dir_name_");
         assertThat(someDir.mkdir(), is(true));
         assertThat(someDir.exists(), is(true));
         directory.clean();

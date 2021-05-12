@@ -42,6 +42,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.LATEST_SUPPORTED_VERSION;
+import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.MIN_NAMED_TOPOLOGY_VERSION;
 
 public class SubscriptionInfo {
     private static final Logger LOG = LoggerFactory.getLogger(SubscriptionInfo.class);
@@ -218,10 +219,11 @@ public class SubscriptionInfo {
             taskOffsetSumsCache = new HashMap<>();
             if (data.version() >= MIN_VERSION_OFFSET_SUM_SUBSCRIPTION) {
                 for (final TaskOffsetSum taskOffsetSum : data.taskOffsetSums()) {
-                    if (data.version() >= 10) {
+                    if (data.version() >= MIN_NAMED_TOPOLOGY_VERSION) {
                         taskOffsetSumsCache.put(
                             new TaskId(taskOffsetSum.topicGroupId(),
-                                       taskOffsetSum.partition()),
+                                       taskOffsetSum.partition(),
+                                       taskOffsetSum.namedTopology()),
                             taskOffsetSum.offsetSum());
                     } else {
                         for (final PartitionToOffsetSum partitionOffsetSum : taskOffsetSum.partitionToOffsetSum()) {
