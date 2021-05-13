@@ -57,7 +57,7 @@ public class TaskId implements Comparable<TaskId> {
             this.namedTopology = namedTopology;
         }
     }
-    
+
     @Override
     public String toString() {
         return namedTopology != null ? namedTopology + "_" + topicGroupId + "_" + partition : topicGroupId + "_" + partition;

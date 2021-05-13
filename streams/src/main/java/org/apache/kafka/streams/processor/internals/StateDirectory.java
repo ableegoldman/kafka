@@ -22,6 +22,7 @@ import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.TaskId;
+import org.apache.kafka.streams.processor.internals.namedtopology.NamedTaskId;
 
 import java.io.FileFilter;
 import java.util.ArrayList;
@@ -248,8 +249,9 @@ public class StateDirectory {
     }
 
     private File getTaskDirectoryParentName(final TaskId taskId) {
-        if (taskId.namedTopology() != null) {
-            return new File(stateDir, "__" + taskId.namedTopology() + "__");
+        final String namedTopology = NamedTaskId.namedTopology(taskId);
+        if (namedTopology != null) {
+            return new File(stateDir, "__" + namedTopology + "__");
         } else {
             return stateDir;
         }
