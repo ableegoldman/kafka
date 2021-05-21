@@ -31,7 +31,6 @@ import org.apache.kafka.streams.internals.generated.SubscriptionInfoData.Partiti
 import org.apache.kafka.streams.internals.generated.SubscriptionInfoData.TaskOffsetSum;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.processor.internals.Task;
-import org.apache.kafka.streams.processor.internals.namedtopology.NamedTaskId;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -135,18 +134,18 @@ public class SubscriptionInfo {
         final Map<Integer, List<SubscriptionInfoData.PartitionToOffsetSum>> topicGroupIdToPartitionOffsetSum = new HashMap<>();
         for (final Map.Entry<TaskId, Long> taskEntry : taskOffsetSums.entrySet()) {
             final TaskId task = taskEntry.getKey();
-            topicGroupIdToPartitionOffsetSum.computeIfAbsent(task.topicGroupId, t -> new ArrayList<>()).add(
+            topicGroupIdToPartitionOffsetSum.computeIfAbsent(task.subtopology(), t -> new ArrayList<>()).add(
                     new SubscriptionInfoData.PartitionToOffsetSum()
-                            .setPartition(task.partition)
+                            .setPartition(task.partition())
                             .setOffsetSum(taskEntry.getValue()));
         }
 
         data.setTaskOffsetSums(taskOffsetSums.entrySet().stream().map(t -> {
             final SubscriptionInfoData.TaskOffsetSum taskOffsetSum = new SubscriptionInfoData.TaskOffsetSum();
             final TaskId task = t.getKey();
-            taskOffsetSum.setTopicGroupId(task.topicGroupId);
-            taskOffsetSum.setPartition(task.partition);
-            taskOffsetSum.setNamedTopology(NamedTaskId.namedTopology(task));
+            taskOffsetSum.setTopicGroupId(task.subtopology());
+            taskOffsetSum.setPartition(task.partition());
+            taskOffsetSum.setNamedTopology(task.namedTopology());
             taskOffsetSum.setOffsetSum(t.getValue());
             return taskOffsetSum;
         }).collect(Collectors.toList()));

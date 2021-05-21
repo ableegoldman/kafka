@@ -63,6 +63,7 @@ import static org.apache.kafka.common.utils.Utils.mkMap;
 import static org.apache.kafka.common.utils.Utils.mkSet;
 import static org.apache.kafka.streams.processor.internals.StateDirectory.PROCESS_FILE_NAME;
 import static org.apache.kafka.streams.processor.internals.StateManagerUtil.CHECKPOINT_FILE_NAME;
+import static org.apache.kafka.streams.processor.internals.StateManagerUtil.toTaskDirString;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
@@ -83,6 +84,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+//TODO KAFKA-12648: add tests for named topology specific stuff
 public class StateDirectoryTest {
 
     private final MockTime time = new MockTime();
@@ -255,9 +257,9 @@ public class StateDirectoryTest {
             directory.lock(task0);
             directory.lock(task1);
 
-            final TaskDirectory dir0 = new TaskDirectory(new File(appDir, task0.toTaskDirString()), null);
-            final TaskDirectory dir1 = new TaskDirectory(new File(appDir, task1.toTaskDirString()), null);
-            final TaskDirectory dir2 = new TaskDirectory(new File(appDir, task2.toTaskDirString()), null);
+            final TaskDirectory dir0 = new TaskDirectory(new File(appDir, toTaskDirString(task0)), null);
+            final TaskDirectory dir1 = new TaskDirectory(new File(appDir, toTaskDirString(task1)), null);
+            final TaskDirectory dir2 = new TaskDirectory(new File(appDir, toTaskDirString(task2)), null);
 
             List<TaskDirectory> files = directory.listAllTaskDirectories();
             assertEquals(mkSet(dir0, dir1, dir2), new HashSet<>(files));
