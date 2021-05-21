@@ -22,7 +22,6 @@ import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.TaskId;
-import org.apache.kafka.streams.processor.internals.namedtopology.NamedTaskId;
 
 import java.io.FileFilter;
 import java.util.ArrayList;
@@ -53,6 +52,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 import static org.apache.kafka.streams.processor.internals.StateManagerUtil.CHECKPOINT_FILE_NAME;
+import static org.apache.kafka.streams.processor.internals.StateManagerUtil.parseTaskDirectoryName;
 
 /**
  * Manages the directories where the state of Tasks owned by a {@link StreamThread} are
@@ -249,7 +249,7 @@ public class StateDirectory {
     }
 
     private File getTaskDirectoryParentName(final TaskId taskId) {
-        final String namedTopology = NamedTaskId.namedTopology(taskId);
+        final String namedTopology = taskId.namedTopology();
         if (namedTopology != null) {
             return new File(stateDir, "__" + namedTopology + "__");
         } else {
@@ -382,7 +382,7 @@ public class StateDirectory {
 
     public synchronized void clean() {
         try {
-            cleanRemovedTasksCalledByUser();
+            cleanStateAndTaskDirectoriesCalledByUser();
         } catch (final Exception e) {
             throw new StreamsException(e);
         }
@@ -419,7 +419,7 @@ public class StateDirectory {
     private void cleanRemovedTasksCalledByCleanerThread(final long cleanupDelayMs) {
         for (final TaskDirectory taskDir : listNonEmptyTaskDirectories()) {
             final String dirName = taskDir.file().getName();
-            final TaskId id = TaskId.parseTaskDirectoryName(dirName, taskDir.namedTopology());
+            final TaskId id = parseTaskDirectoryName(dirName, taskDir.namedTopology());
             if (!lockedTasksToOwner.containsKey(id)) {
                 try {
                     if (lock(id)) {
@@ -461,27 +461,31 @@ public class StateDirectory {
         }
     }
 
-    private void cleanRemovedTasksCalledByUser() throws Exception {
+    private void cleanStateAndTaskDirectoriesCalledByUser() throws Exception {
+        if (!lockedTasksToOwner.isEmpty()) {
+            log.warn("Found some still-locked task directories when user requested to cleaning up the state, " 
+                         + "since Streams is not running any more these will be ignored to complete the cleanup");
+        }
         final AtomicReference<Exception> firstException = new AtomicReference<>();
 
         for (final TaskDirectory taskDir : listAllTaskDirectories()) {
             final String dirName = taskDir.file().getName();
-            final TaskId id = TaskId.parseTaskDirectoryName(dirName, taskDir.namedTopology());
+            final TaskId id = parseTaskDirectoryName(dirName, taskDir.namedTopology());
             if (!lockedTasksToOwner.containsKey(id)) {
                 try {
                     if (lock(id)) {
                         log.info("{} Deleting state directory {} for task {} as user calling cleanup.",
-                            logPrefix(), dirName, id);
+                                logPrefix(), dirName, id);
                         Utils.delete(taskDir.file());
                     } else {
                         log.warn("{} Could not get lock for state directory {} for task {} as user calling cleanup.",
-                            logPrefix(), dirName, id);
+                                logPrefix(), dirName, id);
                     }
                 } catch (final OverlappingFileLockException | IOException exception) {
                     log.error(
-                        String.format("%s Failed to delete state directory %s for task %s with exception:",
-                            logPrefix(), dirName, id),
-                        exception
+                            String.format("%s Failed to delete state directory %s for task %s with exception:",
+                                    logPrefix(), dirName, id),
+                            exception
                     );
                     firstException.compareAndSet(null, exception);
                 } finally {
@@ -492,13 +496,14 @@ public class StateDirectory {
                         Utils.delete(taskDir.file());
                     } catch (final IOException exception) {
                         log.error(
-                            String.format("%s Failed to release lock on state directory %s for task %s with exception:",
-                                logPrefix(), dirName, id),
-                            exception
+                                String.format("%s Failed to release lock on state directory %s for task %s with exception:",
+                                        logPrefix(), dirName, id),
+                                exception
                         );
                         firstException.compareAndSet(null, exception);
                     }
                 }
+                Utils.delete(taskDir.file());
             }
         }
         maybeCleanEmptyNamedTopologyDirs();
