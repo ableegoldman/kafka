@@ -68,6 +68,7 @@ import static org.apache.kafka.streams.processor.internals.StateManagerUtil.toTa
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptySet;
+import static java.util.Collections.singleton;
 import static java.util.Collections.singletonList;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.endsWith;
@@ -370,13 +371,13 @@ public class StateDirectoryTest {
         final File storeDir = new File(taskDir1.file(), "store");
         assertTrue(storeDir.mkdir());
 
-        assertEquals(asList(taskDir1, taskDir2), directory.listAllTaskDirectories());
-        assertEquals(singletonList(taskDir1), directory.listNonEmptyTaskDirectories());
+        assertThat(mkSet(taskDir1, taskDir2), equalTo(new HashSet<>(directory.listAllTaskDirectories())));
+        assertThat(singletonList(taskDir1), equalTo(directory.listNonEmptyTaskDirectories()));
 
         Utils.delete(taskDir1.file());
 
-        assertEquals(singletonList(taskDir2), directory.listAllTaskDirectories());
-        assertEquals(emptyList(), directory.listNonEmptyTaskDirectories());
+        assertThat(singleton(taskDir2), equalTo(new HashSet<>(directory.listAllTaskDirectories())));
+        assertThat(emptyList(), equalTo(directory.listNonEmptyTaskDirectories()));
     }
 
     @Test
