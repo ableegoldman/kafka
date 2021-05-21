@@ -21,6 +21,10 @@ import org.apache.kafka.streams.processor.internals.Task;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -32,15 +36,26 @@ import org.junit.runners.Parameterized;
 
 import static org.apache.kafka.common.utils.Utils.mkEntry;
 import static org.apache.kafka.common.utils.Utils.mkMap;
-import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_0_0;
-import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_0_1;
-import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_1_0;
-import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_1_1;
+import static org.apache.kafka.common.utils.Utils.union;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_T0_0_0;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_T0_0_1;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_T0_1_0;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_T0_1_1;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_T1_0_0;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_T1_0_1;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_T1_0_2;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_T2_0_0;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_T2_1_0;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_T2_2_0;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_0_0;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_0_1;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_0_2;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_0_3;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_1_0;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_1_1;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_1_2;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_2_0;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_2_1;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.UUID_1;
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.LATEST_SUPPORTED_VERSION;
 import static org.apache.kafka.streams.processor.internals.assignment.SubscriptionInfo.MIN_VERSION_OFFSET_SUM_SUBSCRIPTION;
@@ -57,43 +72,43 @@ import static org.junit.Assert.fail;
 @RunWith(Parameterized.class)
 public class SubscriptionInfoTest {
     private static final TaskId[] ACTIVE_TASKS = new TaskId[]{
-            TASK_0_0,
-            TASK_0_1,
-            TASK_1_0,
-            TASK_1_1
+        TASK_0_0,
+        TASK_0_2,
+        TASK_1_0,
+        TASK_1_2,
+        TASK_2_1
     };
 
     private static final TaskId[] STANDBY_TASKS = new TaskId[]{
-            TASK_0_0,
-            TASK_0_1,
-            TASK_1_0,
-            TASK_1_1
+        TASK_0_1,
+        TASK_0_3,
+        TASK_1_1,
+        TASK_2_0,
+        TASK_0_2
     };
 
     private static final TaskId[] ACTIVE_TASKS_WITH_NAMED_TOPOLOGY = new TaskId[]{
-            NAMED_TASK_0_0,
-            NAMED_TASK_0_1,
-            NAMED_TASK_1_0,
-            NAMED_TASK_1_1
+        NAMED_TASK_T0_0_0,
+        NAMED_TASK_T0_1_0,
+        NAMED_TASK_T1_0_0,
+        NAMED_TASK_T1_0_2,
+        NAMED_TASK_T2_0_0
     };
 
     private static final TaskId[] STANDBY_TASKS_WITH_NAMED_TOPOLOGY = new TaskId[]{
-            NAMED_TASK_0_0,
-            NAMED_TASK_0_1,
-            NAMED_TASK_1_0,
-            NAMED_TASK_1_1
+        NAMED_TASK_T0_0_1,
+        NAMED_TASK_T0_1_1,
+        NAMED_TASK_T1_0_1,
+        NAMED_TASK_T2_1_0,
+        NAMED_TASK_T2_2_0
     };
-    private static final Map<TaskId, Long> TASK_OFFSET_SUMS = mkMap(
-        mkEntry(TASK_0_0, Task.LATEST_OFFSET),
-        mkEntry(TASK_0_1, Task.LATEST_OFFSET),
-        mkEntry(TASK_1_0, Task.LATEST_OFFSET),
-        mkEntry(TASK_1_1, 0L),
-        mkEntry(TASK_2_0, 10L)
-    );
 
     private final static String IGNORED_USER_ENDPOINT = "ignoredUserEndpoint:80";
     private static final byte IGNORED_UNIQUE_FIELD = (byte) 0;
     private static final int IGNORED_ERROR_CODE = 0;
+
+    private static final List<Long> offsetSums = asList(
+        Task.LATEST_OFFSET, Task.LATEST_OFFSET, 0L, 10L, Task.LATEST_OFFSET, 0L, 0L, 20L, 500L, 10000L);
 
     @Parameterized.Parameters
     public static Collection<TaskId[][]> data() {
@@ -105,10 +120,17 @@ public class SubscriptionInfoTest {
 
     private final Set<TaskId> activeTasks;
     private final Set<TaskId> standbyTasks;
+    private final Map<TaskId, Long> taskOffsetSums;
 
     public SubscriptionInfoTest(final TaskId[] activeTasks, final TaskId[] standbyTasks) {
         this.activeTasks = Arrays.stream(activeTasks).collect(Collectors.toSet());
         this.standbyTasks = Arrays.stream(standbyTasks).collect(Collectors.toSet());
+        this.taskOffsetSums = new HashMap<>();
+        // list of the offset sums for the 10 total tasks in the active and standby lists
+        final Iterator<Long> offsetIterator = offsetSums.iterator();
+        for (final TaskId task : union(HashSet::new, this.activeTasks, this.standbyTasks)) {
+            this.taskOffsetSums.put(task, offsetIterator.next());
+        }
     }
 
     @Test
@@ -118,7 +140,7 @@ public class SubscriptionInfoTest {
             LATEST_SUPPORTED_VERSION,
             UUID_1,
             "localhost:80",
-            TASK_OFFSET_SUMS,
+                taskOffsetSums,
             IGNORED_UNIQUE_FIELD,
             IGNORED_ERROR_CODE
         ));
@@ -131,7 +153,7 @@ public class SubscriptionInfoTest {
             LATEST_SUPPORTED_VERSION,
             UUID_1,
             "localhost:80",
-            TASK_OFFSET_SUMS,
+                taskOffsetSums,
             IGNORED_UNIQUE_FIELD,
             IGNORED_ERROR_CODE
         ));
@@ -144,7 +166,7 @@ public class SubscriptionInfoTest {
             LATEST_SUPPORTED_VERSION,
             UUID_1,
             IGNORED_USER_ENDPOINT,
-            TASK_OFFSET_SUMS,
+                taskOffsetSums,
             IGNORED_UNIQUE_FIELD,
             IGNORED_ERROR_CODE
         );
@@ -164,7 +186,7 @@ public class SubscriptionInfoTest {
             1234,
             UUID_1,
             "ignoreme",
-            TASK_OFFSET_SUMS,
+                taskOffsetSums,
             IGNORED_UNIQUE_FIELD,
             IGNORED_ERROR_CODE
         );
@@ -207,7 +229,7 @@ public class SubscriptionInfoTest {
             LATEST_SUPPORTED_VERSION,
             UUID_1,
             "localhost:80",
-            TASK_OFFSET_SUMS,
+                taskOffsetSums,
             IGNORED_UNIQUE_FIELD,
             IGNORED_ERROR_CODE
         );
@@ -227,7 +249,7 @@ public class SubscriptionInfoTest {
             LATEST_SUPPORTED_VERSION,
             UUID_1,
             "localhost:80",
-            TASK_OFFSET_SUMS,
+                taskOffsetSums,
             IGNORED_UNIQUE_FIELD,
             IGNORED_ERROR_CODE
         );
@@ -271,7 +293,7 @@ public class SubscriptionInfoTest {
                 LATEST_SUPPORTED_VERSION,
                 UUID_1,
                 "localhost:80",
-                TASK_OFFSET_SUMS,
+                    taskOffsetSums,
                 IGNORED_UNIQUE_FIELD,
                 IGNORED_ERROR_CODE
             );
@@ -293,7 +315,7 @@ public class SubscriptionInfoTest {
                 LATEST_SUPPORTED_VERSION,
                 UUID_1,
                 "localhost:80",
-                TASK_OFFSET_SUMS,
+                    taskOffsetSums,
                 IGNORED_UNIQUE_FIELD,
                 IGNORED_ERROR_CODE
             );
@@ -336,7 +358,7 @@ public class SubscriptionInfoTest {
     @Test
     public void shouldEncodeAndDecodeVersion5() {
         final SubscriptionInfo info =
-            new SubscriptionInfo(5, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", TASK_OFFSET_SUMS, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
+            new SubscriptionInfo(5, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", taskOffsetSums, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
         assertEquals(info, SubscriptionInfo.decode(info.encode()));
     }
 
@@ -353,23 +375,23 @@ public class SubscriptionInfoTest {
         final int latestSupportedVersion = LATEST_SUPPORTED_VERSION - 1;
 
         final SubscriptionInfo info =
-            new SubscriptionInfo(usedVersion, latestSupportedVersion, UUID_1, "localhost:80", TASK_OFFSET_SUMS, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
+            new SubscriptionInfo(usedVersion, latestSupportedVersion, UUID_1, "localhost:80", taskOffsetSums, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
         final SubscriptionInfo expectedInfo =
-            new SubscriptionInfo(usedVersion, latestSupportedVersion, UUID_1, "localhost:80", TASK_OFFSET_SUMS, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
+            new SubscriptionInfo(usedVersion, latestSupportedVersion, UUID_1, "localhost:80", taskOffsetSums, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
         assertEquals(expectedInfo, SubscriptionInfo.decode(info.encode()));
     }
 
     @Test
     public void shouldEncodeAndDecodeVersion7() {
         final SubscriptionInfo info =
-            new SubscriptionInfo(7, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", TASK_OFFSET_SUMS, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
+            new SubscriptionInfo(7, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", taskOffsetSums, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
         assertThat(info, is(SubscriptionInfo.decode(info.encode())));
     }
 
     @Test
     public void shouldConvertTaskOffsetSumMapToTaskSets() {
         final SubscriptionInfo info =
-            new SubscriptionInfo(7, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", TASK_OFFSET_SUMS, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
+            new SubscriptionInfo(7, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", taskOffsetSums, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
         assertThat(info.prevTasks(), is(activeTasks));
         assertThat(info.standbyTasks(), is(standbyTasks));
     }
@@ -380,11 +402,11 @@ public class SubscriptionInfoTest {
             new SubscriptionInfo(MIN_VERSION_OFFSET_SUM_SUBSCRIPTION,
                                  LATEST_SUPPORTED_VERSION, UUID_1,
                                  "localhost:80",
-                                 TASK_OFFSET_SUMS,
+                    taskOffsetSums,
                                  IGNORED_UNIQUE_FIELD,
                                  IGNORED_ERROR_CODE
             ).encode());
-        assertThat(info.taskOffsetSums(), is(TASK_OFFSET_SUMS));
+        assertThat(info.taskOffsetSums(), is(taskOffsetSums));
     }
 
     @Test
@@ -413,14 +435,14 @@ public class SubscriptionInfoTest {
     @Test
     public void shouldEncodeAndDecodeVersion8() {
         final SubscriptionInfo info =
-            new SubscriptionInfo(8, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", TASK_OFFSET_SUMS, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
+            new SubscriptionInfo(8, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", taskOffsetSums, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
         assertThat(info, is(SubscriptionInfo.decode(info.encode())));
     }
 
     @Test
     public void shouldNotErrorAccessingFutureVars() {
         final SubscriptionInfo info =
-                new SubscriptionInfo(8, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", TASK_OFFSET_SUMS, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
+                new SubscriptionInfo(8, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", taskOffsetSums, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
         try {
             info.errorCode();
         } catch (final Exception e) {
@@ -431,7 +453,7 @@ public class SubscriptionInfoTest {
     @Test
     public void shouldEncodeAndDecodeVersion9() {
         final SubscriptionInfo info =
-                new SubscriptionInfo(9, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", TASK_OFFSET_SUMS, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
+                new SubscriptionInfo(9, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", taskOffsetSums, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
         assertThat(info, is(SubscriptionInfo.decode(info.encode())));
     }
 

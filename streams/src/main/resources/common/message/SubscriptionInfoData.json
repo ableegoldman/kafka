@@ -109,6 +109,7 @@
           "name": "namedTopology",
           "versions": "10+",
           "nullableVersions": "10+",
+          "ignorable":  "false",  // namedTopology is not ignorable because if you do, a TaskId may not be unique
           "type": "string"
         },
         {
