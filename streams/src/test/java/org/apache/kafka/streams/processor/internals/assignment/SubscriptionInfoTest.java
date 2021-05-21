@@ -19,16 +19,23 @@ package org.apache.kafka.streams.processor.internals.assignment;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.processor.internals.Task;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import static org.apache.kafka.common.utils.Utils.mkEntry;
 import static org.apache.kafka.common.utils.Utils.mkMap;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_0_0;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_0_1;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_1_0;
+import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.NAMED_TASK_1_1;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_0_0;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_0_1;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_1_0;
@@ -38,6 +45,8 @@ import static org.apache.kafka.streams.processor.internals.assignment.Assignment
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.LATEST_SUPPORTED_VERSION;
 import static org.apache.kafka.streams.processor.internals.assignment.SubscriptionInfo.MIN_VERSION_OFFSET_SUM_SUBSCRIPTION;
 import static org.apache.kafka.streams.processor.internals.assignment.SubscriptionInfo.UNKNOWN_OFFSET_SUM;
+
+import static java.util.Arrays.asList;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
@@ -45,14 +54,35 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 
+@RunWith(Parameterized.class)
 public class SubscriptionInfoTest {
-    private static final Set<TaskId> ACTIVE_TASKS = new HashSet<>(Arrays.asList(
-        TASK_0_0,
-        TASK_0_1,
-        TASK_1_0));
-    private static final Set<TaskId> STANDBY_TASKS = new HashSet<>(Arrays.asList(
-        TASK_1_1,
-        TASK_2_0));
+    private static final TaskId[] ACTIVE_TASKS = new TaskId[]{
+            TASK_0_0,
+            TASK_0_1,
+            TASK_1_0,
+            TASK_1_1
+    };
+
+    private static final TaskId[] STANDBY_TASKS = new TaskId[]{
+            TASK_0_0,
+            TASK_0_1,
+            TASK_1_0,
+            TASK_1_1
+    };
+
+    private static final TaskId[] ACTIVE_TASKS_WITH_NAMED_TOPOLOGY = new TaskId[]{
+            NAMED_TASK_0_0,
+            NAMED_TASK_0_1,
+            NAMED_TASK_1_0,
+            NAMED_TASK_1_1
+    };
+
+    private static final TaskId[] STANDBY_TASKS_WITH_NAMED_TOPOLOGY = new TaskId[]{
+            NAMED_TASK_0_0,
+            NAMED_TASK_0_1,
+            NAMED_TASK_1_0,
+            NAMED_TASK_1_1
+    };
     private static final Map<TaskId, Long> TASK_OFFSET_SUMS = mkMap(
         mkEntry(TASK_0_0, Task.LATEST_OFFSET),
         mkEntry(TASK_0_1, Task.LATEST_OFFSET),
@@ -65,6 +95,21 @@ public class SubscriptionInfoTest {
     private static final byte IGNORED_UNIQUE_FIELD = (byte) 0;
     private static final int IGNORED_ERROR_CODE = 0;
 
+    @Parameterized.Parameters
+    public static Collection<TaskId[][]> data() {
+        return asList(new TaskId[][][] {
+                {ACTIVE_TASKS, STANDBY_TASKS},
+                {ACTIVE_TASKS_WITH_NAMED_TOPOLOGY, STANDBY_TASKS_WITH_NAMED_TOPOLOGY}
+        });
+    }
+
+    private final Set<TaskId> activeTasks;
+    private final Set<TaskId> standbyTasks;
+
+    public SubscriptionInfoTest(final TaskId[] activeTasks, final TaskId[] standbyTasks) {
+        this.activeTasks = Arrays.stream(activeTasks).collect(Collectors.toSet());
+        this.standbyTasks = Arrays.stream(standbyTasks).collect(Collectors.toSet());
+    }
 
     @Test
     public void shouldThrowForUnknownVersion1() {
@@ -107,8 +152,8 @@ public class SubscriptionInfoTest {
         assertEquals(1, decoded.version());
         assertEquals(SubscriptionInfo.UNKNOWN, decoded.latestSupportedVersion());
         assertEquals(UUID_1, decoded.processId());
-        assertEquals(ACTIVE_TASKS, decoded.prevTasks());
-        assertEquals(STANDBY_TASKS, decoded.standbyTasks());
+        assertEquals(activeTasks, decoded.prevTasks());
+        assertEquals(standbyTasks, decoded.standbyTasks());
         assertNull(decoded.userEndPoint());
     }
 
@@ -129,8 +174,8 @@ public class SubscriptionInfoTest {
         assertEquals(1, decoded.version());
         assertEquals(SubscriptionInfo.UNKNOWN, decoded.latestSupportedVersion());
         assertEquals(UUID_1, decoded.processId());
-        assertEquals(ACTIVE_TASKS, decoded.prevTasks());
-        assertEquals(STANDBY_TASKS, decoded.standbyTasks());
+        assertEquals(activeTasks, decoded.prevTasks());
+        assertEquals(standbyTasks, decoded.standbyTasks());
         assertNull(decoded.userEndPoint());
     }
 
@@ -140,8 +185,8 @@ public class SubscriptionInfoTest {
             1,
             LATEST_SUPPORTED_VERSION,
             UUID_1,
-            ACTIVE_TASKS,
-            STANDBY_TASKS,
+                activeTasks,
+                standbyTasks,
             "localhost:80"
         );
         final ByteBuffer buffer = info.encode();
@@ -150,8 +195,8 @@ public class SubscriptionInfoTest {
         assertEquals(1, decoded.version());
         assertEquals(SubscriptionInfo.UNKNOWN, decoded.latestSupportedVersion());
         assertEquals(UUID_1, decoded.processId());
-        assertEquals(ACTIVE_TASKS, decoded.prevTasks());
-        assertEquals(STANDBY_TASKS, decoded.standbyTasks());
+        assertEquals(activeTasks, decoded.prevTasks());
+        assertEquals(standbyTasks, decoded.standbyTasks());
         assertNull(decoded.userEndPoint());
     }
 
@@ -170,8 +215,8 @@ public class SubscriptionInfoTest {
         assertEquals(2, decoded.version());
         assertEquals(SubscriptionInfo.UNKNOWN, decoded.latestSupportedVersion());
         assertEquals(UUID_1, decoded.processId());
-        assertEquals(ACTIVE_TASKS, decoded.prevTasks());
-        assertEquals(STANDBY_TASKS, decoded.standbyTasks());
+        assertEquals(activeTasks, decoded.prevTasks());
+        assertEquals(standbyTasks, decoded.standbyTasks());
         assertEquals("localhost:80", decoded.userEndPoint());
     }
 
@@ -192,8 +237,8 @@ public class SubscriptionInfoTest {
         assertEquals(2, decoded.version());
         assertEquals(SubscriptionInfo.UNKNOWN, decoded.latestSupportedVersion());
         assertEquals(UUID_1, decoded.processId());
-        assertEquals(ACTIVE_TASKS, decoded.prevTasks());
-        assertEquals(STANDBY_TASKS, decoded.standbyTasks());
+        assertEquals(activeTasks, decoded.prevTasks());
+        assertEquals(standbyTasks, decoded.standbyTasks());
         assertEquals("localhost:80", decoded.userEndPoint());
     }
 
@@ -203,8 +248,8 @@ public class SubscriptionInfoTest {
             2,
             LATEST_SUPPORTED_VERSION,
             UUID_1,
-            ACTIVE_TASKS,
-            STANDBY_TASKS,
+                activeTasks,
+                standbyTasks,
             "localhost:80"
         );
         final ByteBuffer buffer = info.encode();
@@ -213,8 +258,8 @@ public class SubscriptionInfoTest {
         assertEquals(2, decoded.version());
         assertEquals(SubscriptionInfo.UNKNOWN, decoded.latestSupportedVersion());
         assertEquals(UUID_1, decoded.processId());
-        assertEquals(ACTIVE_TASKS, decoded.prevTasks());
-        assertEquals(STANDBY_TASKS, decoded.standbyTasks());
+        assertEquals(activeTasks, decoded.prevTasks());
+        assertEquals(standbyTasks, decoded.standbyTasks());
         assertEquals("localhost:80", decoded.userEndPoint());
     }
 
@@ -234,8 +279,8 @@ public class SubscriptionInfoTest {
             assertEquals(version, decoded.version());
             assertEquals(LATEST_SUPPORTED_VERSION, decoded.latestSupportedVersion());
             assertEquals(UUID_1, decoded.processId());
-            assertEquals(ACTIVE_TASKS, decoded.prevTasks());
-            assertEquals(STANDBY_TASKS, decoded.standbyTasks());
+            assertEquals(activeTasks, decoded.prevTasks());
+            assertEquals(standbyTasks, decoded.standbyTasks());
             assertEquals("localhost:80", decoded.userEndPoint());
         }
     }
@@ -258,8 +303,8 @@ public class SubscriptionInfoTest {
             assertEquals(version, decoded.version());
             assertEquals(LATEST_SUPPORTED_VERSION, decoded.latestSupportedVersion());
             assertEquals(UUID_1, decoded.processId());
-            assertEquals(ACTIVE_TASKS, decoded.prevTasks());
-            assertEquals(STANDBY_TASKS, decoded.standbyTasks());
+            assertEquals(activeTasks, decoded.prevTasks());
+            assertEquals(standbyTasks, decoded.standbyTasks());
             assertEquals("localhost:80", decoded.userEndPoint());
         }
     }
@@ -271,8 +316,8 @@ public class SubscriptionInfoTest {
                 version,
                 LATEST_SUPPORTED_VERSION,
                 UUID_1,
-                ACTIVE_TASKS,
-                STANDBY_TASKS,
+                    activeTasks,
+                    standbyTasks,
                 "localhost:80"
             );
             final ByteBuffer buffer = info.encode();
@@ -282,8 +327,8 @@ public class SubscriptionInfoTest {
             assertEquals(message, version, decoded.version());
             assertEquals(message, LATEST_SUPPORTED_VERSION, decoded.latestSupportedVersion());
             assertEquals(message, UUID_1, decoded.processId());
-            assertEquals(message, ACTIVE_TASKS, decoded.prevTasks());
-            assertEquals(message, STANDBY_TASKS, decoded.standbyTasks());
+            assertEquals(message, activeTasks, decoded.prevTasks());
+            assertEquals(message, standbyTasks, decoded.standbyTasks());
             assertEquals(message, "localhost:80", decoded.userEndPoint());
         }
     }
@@ -325,8 +370,8 @@ public class SubscriptionInfoTest {
     public void shouldConvertTaskOffsetSumMapToTaskSets() {
         final SubscriptionInfo info =
             new SubscriptionInfo(7, LATEST_SUPPORTED_VERSION, UUID_1, "localhost:80", TASK_OFFSET_SUMS, IGNORED_UNIQUE_FIELD, IGNORED_ERROR_CODE);
-        assertThat(info.prevTasks(), is(ACTIVE_TASKS));
-        assertThat(info.standbyTasks(), is(STANDBY_TASKS));
+        assertThat(info.prevTasks(), is(activeTasks));
+        assertThat(info.standbyTasks(), is(standbyTasks));
     }
 
     @Test
@@ -357,8 +402,8 @@ public class SubscriptionInfoTest {
                 SubscriptionInfo.MIN_VERSION_OFFSET_SUM_SUBSCRIPTION - 1,
                 LATEST_SUPPORTED_VERSION,
                 UUID_1,
-                ACTIVE_TASKS,
-                STANDBY_TASKS,
+                    activeTasks,
+                    standbyTasks,
                 "localhost:80")
             .encode());
 

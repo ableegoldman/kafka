@@ -442,23 +442,51 @@ public class StateDirectory {
                 }
             }
         }
-        maybeCleanEmptyNamedTopologyDirs();
+        // Ok to ignore returned exception as it should be swallowed
+        maybeCleanEmptyNamedTopologyDirs(true);
     }
 
-    private void maybeCleanEmptyNamedTopologyDirs() {
-        if (hasNamedTopologies) {
-            final File[] namedTopologyDirs = stateDir.listFiles(pathname ->
-                    pathname.isDirectory() && NAMED_TOPOLOGY_DIR_PATH_NAME.matcher(pathname.getName()).matches()
-            );
-            if (namedTopologyDirs != null) {
-                for (final File namedTopologyDir : namedTopologyDirs) {
-                    final File[] contents = namedTopologyDir.listFiles();
-                    if (contents != null && contents.length == 0 && !namedTopologyDir.delete()) {
-                        log.warn("Unable to delete empty topology dir {}", namedTopologyDir.getName());
+    /**
+     * Cleans up any leftover named topology directories that are empty, if any exist
+     * @param logExceptionAsWarn if true, an exception will be logged as a warning
+     *                       if false, an exception will be logged as error
+     * @return the first IOException to be encountered
+     */
+    private IOException maybeCleanEmptyNamedTopologyDirs(final boolean logExceptionAsWarn) {
+        if (!hasNamedTopologies) {
+            return null;
+        }
+
+        final AtomicReference<IOException> firstException = new AtomicReference<>(null);
+        final File[] namedTopologyDirs = stateDir.listFiles(pathname ->
+                pathname.isDirectory() && NAMED_TOPOLOGY_DIR_PATH_NAME.matcher(pathname.getName()).matches()
+        );
+        if (namedTopologyDirs != null) {
+            for (final File namedTopologyDir : namedTopologyDirs) {
+                final File[] contents = namedTopologyDir.listFiles();
+                if (contents != null && contents.length == 0) {
+                    try {
+                        Utils.delete(namedTopologyDir);
+                    } catch (final IOException exception) {
+                        if (logExceptionAsWarn) {
+                            log.warn(
+                                String.format("%sSwallowed the following exception during deletion of named topology directory %s",
+                                    logPrefix(), namedTopologyDir.getName()),
+                                exception
+                            );
+                        } else {
+                            log.error(
+                                String.format("%s Failed to delete named topology directory %s with exception:",
+                                    logPrefix(), namedTopologyDir.getName()),
+                                exception
+                            );
+                        }
+                        firstException.compareAndSet(null, exception);
                     }
                 }
             }
         }
+        return firstException.get();
     }
 
     private void cleanStateAndTaskDirectoriesCalledByUser() throws Exception {
@@ -467,46 +495,32 @@ public class StateDirectory {
                          + "since Streams is not running any more these will be ignored to complete the cleanup");
         }
         final AtomicReference<Exception> firstException = new AtomicReference<>();
-
         for (final TaskDirectory taskDir : listAllTaskDirectories()) {
             final String dirName = taskDir.file().getName();
             final TaskId id = parseTaskDirectoryName(dirName, taskDir.namedTopology());
             if (!lockedTasksToOwner.containsKey(id)) {
                 try {
-                    if (lock(id)) {
-                        log.info("{} Deleting state directory {} for task {} as user calling cleanup.",
-                                logPrefix(), dirName, id);
-                        Utils.delete(taskDir.file());
-                    } else {
-                        log.warn("{} Could not get lock for state directory {} for task {} as user calling cleanup.",
-                                logPrefix(), dirName, id);
+                    log.info("{} Deleting task directory {} for {} as user calling cleanup.",
+                            logPrefix(), dirName, id);
+
+                    if (lockedTasksToOwner.containsKey(id)) {
+                        log.warn("{} Task {} in state directory {} was still locked by {}",
+                                logPrefix(), dirName, id, lockedTasksToOwner.get(id));
                     }
-                } catch (final OverlappingFileLockException | IOException exception) {
+                    Utils.delete(taskDir.file());
+                } catch (final IOException exception) {
                     log.error(
-                            String.format("%s Failed to delete state directory %s for task %s with exception:",
+                            String.format("%s Failed to delete task directory %s for %s with exception:",
                                     logPrefix(), dirName, id),
                             exception
                     );
                     firstException.compareAndSet(null, exception);
-                } finally {
-                    try {
-                        unlock(id);
-                        // for manual user call, stream threads are not running so it is safe to delete
-                        // the whole directory
-                        Utils.delete(taskDir.file());
-                    } catch (final IOException exception) {
-                        log.error(
-                                String.format("%s Failed to release lock on state directory %s for task %s with exception:",
-                                        logPrefix(), dirName, id),
-                                exception
-                        );
-                        firstException.compareAndSet(null, exception);
-                    }
                 }
-                Utils.delete(taskDir.file());
             }
         }
-        maybeCleanEmptyNamedTopologyDirs();
+
+        firstException.compareAndSet(null, maybeCleanEmptyNamedTopologyDirs(false));
+
         final Exception exception = firstException.get();
         if (exception != null) {
             throw exception;

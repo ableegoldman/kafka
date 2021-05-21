@@ -93,6 +93,8 @@
           "versions": "7+",
           "type": "int32"
         },
+        // Prior to version 10, in 7-9, the below fields (partition and offsetSum) were encoded via the nested
+        // partitionToOffsetSum struct. In 10+ all fields are encoded directly in the TaskOffsetSum struct
         {
           "name": "partition",
           "versions": "10+",
@@ -109,7 +111,6 @@
           "nullableVersions": "10+",
           "type": "string"
         },
-        // In 7-9 we encoded this as a nested list, in 10+ this information is included but we flattened the struct out
         {
           "name": "partitionToOffsetSum",
           "versions": "7-9",

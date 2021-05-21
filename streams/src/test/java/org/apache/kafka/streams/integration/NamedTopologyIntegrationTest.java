@@ -16,18 +16,17 @@
  */
 package org.apache.kafka.streams.integration;
 
-//TODO KAFKA-12648
 public class NamedTopologyIntegrationTest {
+    //TODO KAFKA-12648
     /**
-     * Things to test:
+     * Things to test in Pt. 2 -  Introduce TopologyMetadata to wrap InternalTopologyBuilders of named topologies:
      * 1. Verify changelog & repartition topics decorated with named topology
-     * 2. App runs as expected with
+     * 2. Make sure app run and works with
      *         -multiple subtopologies
      *         -persistent state
      *         -multi-partition input & output topics
-     *         -test input and verify output records
      *         -standbys
+     *         -piped input and verified output records
      * 3. Is the task assignment balanced? Does KIP-441/warmup replica placement work as intended?
-     * 4. maybe unit or integration test to verify subscription/assignment info sent as expected?
      */
 }
