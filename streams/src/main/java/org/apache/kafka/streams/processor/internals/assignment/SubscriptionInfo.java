@@ -156,6 +156,9 @@ public class SubscriptionInfo {
         final Map<Integer, List<SubscriptionInfoData.PartitionToOffsetSum>> topicGroupIdToPartitionOffsetSum = new HashMap<>();
         for (final Map.Entry<TaskId, Long> taskEntry : taskOffsetSums.entrySet()) {
             final TaskId task = taskEntry.getKey();
+            if (task.namedTopology() != null) {
+                throw new TaskAssignmentException("Named topologies are not compatible with older protocol versions");
+            }
             topicGroupIdToPartitionOffsetSum.computeIfAbsent(task.subtopology(), t -> new ArrayList<>()).add(
                 new SubscriptionInfoData.PartitionToOffsetSum()
                     .setPartition(task.partition())
@@ -176,6 +179,9 @@ public class SubscriptionInfo {
         final Set<TaskId> standbyTasks = new HashSet<>();
 
         for (final Map.Entry<TaskId, Long> taskOffsetSum : taskOffsetSums.entrySet()) {
+            if (taskOffsetSum.getKey().namedTopology() != null) {
+                throw new TaskAssignmentException("Named topologies are not compatible with older protocol versions");
+            }
             if (taskOffsetSum.getValue() == Task.LATEST_OFFSET) {
                 prevTasks.add(taskOffsetSum.getKey());
             } else {
