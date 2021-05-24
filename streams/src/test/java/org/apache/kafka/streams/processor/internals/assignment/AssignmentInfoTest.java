@@ -17,6 +17,7 @@
 package org.apache.kafka.streams.processor.internals.assignment;
 
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.streams.errors.TaskAssignmentException;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.state.HostInfo;
 import org.junit.Test;
@@ -42,6 +43,7 @@ import static org.apache.kafka.streams.processor.internals.assignment.Assignment
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_1_0;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.TASK_1_1;
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.LATEST_SUPPORTED_VERSION;
+import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.MIN_NAMED_TOPOLOGY_VERSION;
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.UNKNOWN;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
@@ -200,6 +202,13 @@ public class AssignmentInfoTest {
         final AssignmentInfo info =
             new AssignmentInfo(10, LATEST_SUPPORTED_VERSION, NAMED_ACTIVE_TASKS, NAMED_STANDBY_TASKS, activeAssignment, standbyAssignment, 2);
         assertEquals(info, AssignmentInfo.decode(info.encode()));
+    }
+
+    @Test
+    public void shouldNotEncodeAndDecodeNamedTopologiesWithOlderVersion() {
+        final AssignmentInfo info =
+            new AssignmentInfo(MIN_NAMED_TOPOLOGY_VERSION - 1, LATEST_SUPPORTED_VERSION, NAMED_ACTIVE_TASKS, NAMED_STANDBY_TASKS, activeAssignment, standbyAssignment, 2);
+        assertThrows(TaskAssignmentException.class, () -> AssignmentInfo.decode(info.encode()));
     }
 
     @Test
