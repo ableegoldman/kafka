@@ -688,7 +688,7 @@ public class TaskManager {
             final File dir = taskDir.file();
             final String namedTopology = taskDir.namedTopology();
             try {
-                final TaskId id = parseTaskDirectoryName(dir.getName(), null);
+                final TaskId id = parseTaskDirectoryName(dir.getName(), namedTopology);
                 if (stateDirectory.lock(id)) {
                     lockedTaskDirectories.add(id);
                     if (!tasks.owned(id)) {
