@@ -84,7 +84,6 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-//TODO KAFKA-12648: add tests for named topology specific stuff
 public class StateDirectoryTest {
 
     private final MockTime time = new MockTime();
@@ -398,26 +397,6 @@ public class StateDirectoryTest {
     }
 
     @Test
-    public void shouldRemoveEmptyNamedTopologyDirs() throws Exception {
-        initializeStateDirectory(true, true);
-        final File namedDir = new File(appDir, "__my-named-topology__");
-        assertThat(namedDir.mkdir(), is(true));
-        assertThat(namedDir.exists(), is(true));
-        directory.clean();
-        assertThat(namedDir.exists(), is(false));
-    }
-
-    @Test
-    public void shouldNotRemoveEmptyDirsThatDontMatchNamedTopologyDirs() throws Exception {
-        initializeStateDirectory(true, true);
-        final File someDir = new File(appDir, "_not-a-valid-named-topology_dir_name_");
-        assertThat(someDir.mkdir(), is(true));
-        assertThat(someDir.exists(), is(true));
-        directory.clean();
-        assertThat(someDir.exists(), is(true));
-    }
-
-    @Test
     public void shouldNotLockStateDirLockedByAnotherThread() throws Exception {
         final TaskId taskId = new TaskId(0, 0);
         final Thread thread = new Thread(() -> directory.lock(taskId));
@@ -583,6 +562,29 @@ public class StateDirectoryTest {
             );
         }
     }
+
+    /************* Named Topology Tests *************/
+    @Test
+    public void shouldRemoveEmptyNamedTopologyDirs() throws Exception {
+        initializeStateDirectory(true, true);
+        final File namedDir = new File(appDir, "__my-named-topology__");
+        assertThat(namedDir.mkdir(), is(true));
+        assertThat(namedDir.exists(), is(true));
+        directory.clean();
+        assertThat(namedDir.exists(), is(false));
+    }
+
+    @Test
+    public void shouldNotRemoveEmptyDirsThatDoNotMatchNamedTopologyDirs() throws Exception {
+        initializeStateDirectory(true, true);
+        final File someDir = new File(appDir, "_not-a-valid-named-topology_dir_name_");
+        assertThat(someDir.mkdir(), is(true));
+        assertThat(someDir.exists(), is(true));
+        directory.clean();
+        assertThat(someDir.exists(), is(true));
+    }
+
+    /************************************************/
 
     @Test
     public void shouldPersistProcessIdAcrossRestart() {

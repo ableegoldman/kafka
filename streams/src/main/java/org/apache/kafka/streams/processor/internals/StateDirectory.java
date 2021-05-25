@@ -143,7 +143,8 @@ public class StateDirectory {
     }
 
     public StateDirectory(final StreamsConfig config, final Time time, final boolean hasPersistentStores) {
-        //TODO Explicitly set hasNamedTopology appropriately in each test and remove this
+        // TODO KAFKA-12648: Explicitly set hasNamedTopology in each test and remove this constructor
+        // Will be done in Pt. 2 as we want some of these integration tests to use named topologies
         this(config, time, hasPersistentStores, false);
     }
 
@@ -491,31 +492,29 @@ public class StateDirectory {
 
     private void cleanStateAndTaskDirectoriesCalledByUser() throws Exception {
         if (!lockedTasksToOwner.isEmpty()) {
-            log.warn("Found some still-locked task directories when user requested to cleaning up the state, " 
-                         + "since Streams is not running any more these will be ignored to complete the cleanup");
+            log.warn("Found some still-locked task directories when user requested to cleaning up the state, "
+                + "since Streams is not running any more these will be ignored to complete the cleanup");
         }
         final AtomicReference<Exception> firstException = new AtomicReference<>();
         for (final TaskDirectory taskDir : listAllTaskDirectories()) {
             final String dirName = taskDir.file().getName();
             final TaskId id = parseTaskDirectoryName(dirName, taskDir.namedTopology());
-            if (!lockedTasksToOwner.containsKey(id)) {
-                try {
-                    log.info("{} Deleting task directory {} for {} as user calling cleanup.",
-                            logPrefix(), dirName, id);
+            try {
+                log.info("{} Deleting task directory {} for {} as user calling cleanup.",
+                    logPrefix(), dirName, id);
 
-                    if (lockedTasksToOwner.containsKey(id)) {
-                        log.warn("{} Task {} in state directory {} was still locked by {}",
-                                logPrefix(), dirName, id, lockedTasksToOwner.get(id));
-                    }
-                    Utils.delete(taskDir.file());
-                } catch (final IOException exception) {
-                    log.error(
-                            String.format("%s Failed to delete task directory %s for %s with exception:",
-                                    logPrefix(), dirName, id),
-                            exception
-                    );
-                    firstException.compareAndSet(null, exception);
+                if (lockedTasksToOwner.containsKey(id)) {
+                    log.warn("{} Task {} in state directory {} was still locked by {}",
+                        logPrefix(), dirName, id, lockedTasksToOwner.get(id));
                 }
+                Utils.delete(taskDir.file());
+            } catch (final IOException exception) {
+                log.error(
+                    String.format("%s Failed to delete task directory %s for %s with exception:",
+                        logPrefix(), dirName, id),
+                    exception
+                );
+                firstException.compareAndSet(null, exception);
             }
         }
 

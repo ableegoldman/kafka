@@ -2040,7 +2040,7 @@ public class InternalTopologyBuilder {
     }
 
     public boolean hasNamedTopologies() {
-        // TODO
+        // TODO KAFKA-12648: covered by Pt. 2
         return false;
     }
 
