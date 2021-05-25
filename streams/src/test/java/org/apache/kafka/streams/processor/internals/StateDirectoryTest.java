@@ -564,24 +564,106 @@ public class StateDirectoryTest {
     }
 
     /************* Named Topology Tests *************/
+
     @Test
-    public void shouldRemoveEmptyNamedTopologyDirs() throws Exception {
+    public void shouldCreateTaskDirectoriesUnderNamedTopologyDirs() throws IOException {
         initializeStateDirectory(true, true);
-        final File namedDir = new File(appDir, "__my-named-topology__");
-        assertThat(namedDir.mkdir(), is(true));
-        assertThat(namedDir.exists(), is(true));
-        directory.clean();
-        assertThat(namedDir.exists(), is(false));
+
+        directory.getOrCreateDirectoryForTask(new TaskId(0, 0, "topology1"));
+        directory.getOrCreateDirectoryForTask(new TaskId(0, 1, "topology1"));
+        directory.getOrCreateDirectoryForTask(new TaskId(0, 0, "topology2"));
+
+        assertThat(new File(appDir, "__topology1__").exists(), is(true));
+        assertThat(new File(appDir, "__topology1__").isDirectory(), is(true));
+        assertThat(new File(appDir, "__topology2__").exists(), is(true));
+        assertThat(new File(appDir, "__topology2__").isDirectory(), is(true));
+
+        assertThat(new File(new File(appDir, "__topology1__"), "0_0").exists(), is(true));
+        assertThat(new File(new File(appDir, "__topology1__"), "0_0").isDirectory(), is(true));
+        assertThat(new File(new File(appDir, "__topology1__"), "0_1").exists(), is(true));
+        assertThat(new File(new File(appDir, "__topology1__"), "0_1").isDirectory(), is(true));
+        assertThat(new File(new File(appDir, "__topology2__"), "0_0").exists(), is(true));
+        assertThat(new File(new File(appDir, "__topology2__"), "0_0").isDirectory(), is(true));
     }
 
     @Test
-    public void shouldNotRemoveEmptyDirsThatDoNotMatchNamedTopologyDirs() throws Exception {
+    public void shouldOnlyListNonEmptyTaskDirectoriesInNamedTopologies() throws IOException {
+        initializeStateDirectory(true, true);
+
+        TestUtils.tempDirectory(appDir.toPath(), "foo");
+        final TaskDirectory taskDir1 = new TaskDirectory(directory.getOrCreateDirectoryForTask(new TaskId(0, 0, "topology1")), "topology1");
+        final TaskDirectory taskDir2 = new TaskDirectory(directory.getOrCreateDirectoryForTask(new TaskId(0, 1, "topology1")), "topology1");
+        final TaskDirectory taskDir3 = new TaskDirectory(directory.getOrCreateDirectoryForTask(new TaskId(0, 0, "topology2")), "topology2");
+
+        final File storeDir = new File(taskDir1.file(), "store");
+        assertTrue(storeDir.mkdir());
+
+        assertThat(new HashSet<>(directory.listAllTaskDirectories()), equalTo(mkSet(taskDir1, taskDir2, taskDir3)));
+        assertThat(directory.listNonEmptyTaskDirectories(), equalTo(singletonList(taskDir1)));
+
+        Utils.delete(taskDir1.file());
+
+        assertThat(new HashSet<>(directory.listAllTaskDirectories()), equalTo(mkSet(taskDir2, taskDir3)));
+        assertThat(directory.listNonEmptyTaskDirectories(), equalTo(emptyList()));
+    }
+
+    @Test
+    public void shouldRemoveNonEmptyNamedTopologyDirsWhenCallingClean() throws Exception {
+        initializeStateDirectory(true, true);
+        final File taskDir = directory.getOrCreateDirectoryForTask(new TaskId(2, 0, "topology1"));
+        final File namedTopologyDir = new File(appDir, "__topology1__");
+
+        assertThat(taskDir.exists(), is(true));
+        assertThat(namedTopologyDir.exists(), is(true));
+        directory.clean();
+        assertThat(taskDir.exists(), is(false));
+        assertThat(namedTopologyDir.exists(), is(false));
+    }
+
+    @Test
+    public void shouldRemoveEmptyNamedTopologyDirsWhenCallingClean() throws IOException {
+        initializeStateDirectory(true, true);
+        final File namedTopologyDir = new File(appDir, "__topology1__");
+        assertThat(namedTopologyDir.mkdir(), is(true));
+        assertThat(namedTopologyDir.exists(), is(true));
+        directory.clean();
+        assertThat(namedTopologyDir.exists(), is(false));
+    }
+
+    @Test
+    public void shouldNotRemoveDirsThatDoNotMatchNamedTopologyDirsWhenCallingClean() throws IOException {
         initializeStateDirectory(true, true);
         final File someDir = new File(appDir, "_not-a-valid-named-topology_dir_name_");
         assertThat(someDir.mkdir(), is(true));
         assertThat(someDir.exists(), is(true));
         directory.clean();
         assertThat(someDir.exists(), is(true));
+    }
+
+    @Test
+    public void shouldCleanupObsoleteTaskDirectoriesInNamedTopologiesAndDeleteTheParentDirectories() throws IOException {
+        initializeStateDirectory(true, true);
+
+        final File taskDir = directory.getOrCreateDirectoryForTask(new TaskId(2, 0, "topology1"));
+        final File namedTopologyDir = new File(appDir, "__topology1__");
+        assertThat(namedTopologyDir.exists(), is(true));
+        assertThat(taskDir.exists(), is(true));
+        assertTrue(new File(taskDir, "store").mkdir());
+        assertThat(directory.listAllTaskDirectories().size(), is(1));
+        assertThat(directory.listNonEmptyTaskDirectories().size(), is(1));
+
+        try (final LogCaptureAppender appender = LogCaptureAppender.createAndRegister(StateDirectory.class)) {
+            time.sleep(5000);
+            directory.cleanRemovedTasks(0);
+            assertThat(taskDir.exists(), is(false));
+            assertThat(namedTopologyDir.exists(), is(false));
+            assertThat(directory.listAllTaskDirectories().size(), is(0));
+            assertThat(directory.listNonEmptyTaskDirectories().size(), is(0));
+            assertThat(
+                appender.getMessages(),
+                hasItem(containsString("Deleting obsolete state directory"))
+            );
+        }
     }
 
     /************************************************/

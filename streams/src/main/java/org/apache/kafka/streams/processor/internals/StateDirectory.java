@@ -26,6 +26,7 @@ import org.apache.kafka.streams.processor.TaskId;
 import java.io.FileFilter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -62,7 +63,7 @@ import static org.apache.kafka.streams.processor.internals.StateManagerUtil.pars
 public class StateDirectory {
 
     private static final Pattern TASK_DIR_PATH_NAME = Pattern.compile("\\d+_\\d+");
-    private static final Pattern NAMED_TOPOLOGY_DIR_PATH_NAME = Pattern.compile("__.+__");
+    private static final Pattern NAMED_TOPOLOGY_DIR_PATH_NAME = Pattern.compile("__.+__"); // named topology dirs follow '__Topology-Name__'
     private static final Logger log = LoggerFactory.getLogger(StateDirectory.class);
     static final String LOCK_FILE_NAME = ".lock";
 
@@ -228,7 +229,7 @@ public class StateDirectory {
      */
     public File getOrCreateDirectoryForTask(final TaskId taskId) {
         final File taskParentDir = getTaskDirectoryParentName(taskId);
-        final File taskDir = new File(taskParentDir, taskId.toString());
+        final File taskDir = new File(taskParentDir, StateManagerUtil.toTaskDirString(taskId));
         if (hasPersistentStores && !taskDir.exists()) {
             synchronized (taskDirCreationLock) {
                 // to avoid a race condition, we need to check again if the directory does not exist:
@@ -252,6 +253,9 @@ public class StateDirectory {
     private File getTaskDirectoryParentName(final TaskId taskId) {
         final String namedTopology = taskId.namedTopology();
         if (namedTopology != null) {
+            if (!hasNamedTopologies) {
+                throw new IllegalStateException("Tried to lookup taskId with named topology, but StateDirectory thinks hasNamedTopologies = false");
+            }
             return new File(stateDir, "__" + namedTopology + "__");
         } else {
             return stateDir;
@@ -418,7 +422,7 @@ public class StateDirectory {
     }
 
     private void cleanRemovedTasksCalledByCleanerThread(final long cleanupDelayMs) {
-        for (final TaskDirectory taskDir : listNonEmptyTaskDirectories()) {
+        for (final TaskDirectory taskDir : listAllTaskDirectories()) {
             final String dirName = taskDir.file().getName();
             final TaskId id = parseTaskDirectoryName(dirName, taskDir.namedTopology());
             if (!lockedTasksToOwner.containsKey(id)) {
@@ -552,14 +556,12 @@ public class StateDirectory {
         final List<TaskDirectory> taskDirectories = new ArrayList<>();
         if (hasPersistentStores && stateDir.exists()) {
             if (hasNamedTopologies) {
-                final File[] namedTopologyDirectories = stateDir.listFiles();
-                if (namedTopologyDirectories != null) {
-                    for (final File namedTopologyDir : namedTopologyDirectories) {
-                        final File[] taskDirs = namedTopologyDir.listFiles(filter);
-                        if (taskDirs != null) {
-                            taskDirectories.addAll(Arrays.stream(taskDirs)
-                                                       .map(f -> new TaskDirectory(f, namedTopologyDir.getName())).collect(Collectors.toList()));
-                        }
+                for (final File namedTopologyDir : listNamedTopologyDirs()) {
+                    final String namedTopology = parseNamedTopologyFromDirectory(namedTopologyDir.getName());
+                    final File[] taskDirs = namedTopologyDir.listFiles(filter);
+                    if (taskDirs != null) {
+                        taskDirectories.addAll(Arrays.stream(taskDirs)
+                            .map(f -> new TaskDirectory(f, namedTopology)).collect(Collectors.toList()));
                     }
                 }
             } else {
@@ -573,6 +575,15 @@ public class StateDirectory {
         }
 
         return taskDirectories;
+    }
+
+    private List<File> listNamedTopologyDirs() {
+        final File[] namedTopologyDirectories = stateDir.listFiles(f -> f.getName().startsWith("__") &&  f.getName().endsWith("__"));
+        return namedTopologyDirectories != null ? Arrays.asList(namedTopologyDirectories) : Collections.emptyList();
+    }
+
+    private String parseNamedTopologyFromDirectory(final String dirName) {
+        return dirName.substring(2, dirName.length() - 2);
     }
 
     private FileLock tryLock(final FileChannel channel) throws IOException {
