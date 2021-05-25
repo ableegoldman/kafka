@@ -131,15 +131,6 @@ public class SubscriptionInfo {
 
     // For version > MIN_NAMED_TOPOLOGY_VERSION
     private void setTaskOffsetSumDataWithNamedTopologiesFromTaskOffsetSumMap(final Map<TaskId, Long> taskOffsetSums) {
-        final Map<Integer, List<SubscriptionInfoData.PartitionToOffsetSum>> topicGroupIdToPartitionOffsetSum = new HashMap<>();
-        for (final Map.Entry<TaskId, Long> taskEntry : taskOffsetSums.entrySet()) {
-            final TaskId task = taskEntry.getKey();
-            topicGroupIdToPartitionOffsetSum.computeIfAbsent(task.subtopology(), t -> new ArrayList<>()).add(
-                    new SubscriptionInfoData.PartitionToOffsetSum()
-                            .setPartition(task.partition())
-                            .setOffsetSum(taskEntry.getValue()));
-        }
-
         data.setTaskOffsetSums(taskOffsetSums.entrySet().stream().map(t -> {
             final SubscriptionInfoData.TaskOffsetSum taskOffsetSum = new SubscriptionInfoData.TaskOffsetSum();
             final TaskId task = t.getKey();
