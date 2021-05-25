@@ -1270,7 +1270,7 @@ public class KafkaStreams implements AutoCloseable {
         }
 
         if (topologyMetadata.isEmpty()) {
-            if (setState(State.REBALANCING)) {
+            if (setState(State.RUNNING)) {
                 log.debug("Transitioning directly to RUNNING for app with no named topologies");
             } else {
                 throw new IllegalStateException("Unexpected error in transitioning empty KafkaStreams to RUNNING");
