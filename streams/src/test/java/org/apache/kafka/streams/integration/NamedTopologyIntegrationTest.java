@@ -17,16 +17,22 @@
 package org.apache.kafka.streams.integration;
 
 public class NamedTopologyIntegrationTest {
-    //TODO KAFKA-12648
+    // TODO KAFKA-12648
     /**
      * Things to test in Pt. 2 -  Introduce TopologyMetadata to wrap InternalTopologyBuilders of named topologies:
      * 1. Verify changelog & repartition topics decorated with named topology
-     * 2. Make sure app run and works with
+     * 2. Make sure a complex app run and works, ie one with
      *         -multiple subtopologies
      *         -persistent state
      *         -multi-partition input & output topics
      *         -standbys
      *         -piped input and verified output records
      * 3. Is the task assignment balanced? Does KIP-441/warmup replica placement work as intended?
+     *
+     * Things to test in Pt. 3 - implement addNamedTopology() API for additive upgrades:
+     * 1. Test starting up Streams with empty topology
+     * 2. Test starting up Streams with multiple NamedTopologies (not dynamically added)
+     * 3. Verify complex app (see Pt.2-2 above) works when a second NamedTopology is added after startup, ie call addNamedTopology()
+     *
      */
 }

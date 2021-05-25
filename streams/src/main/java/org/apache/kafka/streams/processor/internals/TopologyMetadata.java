@@ -19,6 +19,7 @@ package org.apache.kafka.streams.processor.internals;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.errors.TopologyException;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.TaskId;
@@ -32,6 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -49,42 +52,58 @@ import org.slf4j.LoggerFactory;
 public class TopologyMetadata {
     private final Logger log = LoggerFactory.getLogger(TopologyMetadata.class);
 
-    private static final String UNNAMED_TOPOLOGY = "topology";
+    // the '*' character is not allowed for topology names, thus it is safe to use here to indicate that it is not a named topology
+    private static final String UNNAMED_TOPOLOGY = "***";
     private static final Pattern EMPTY_ZERO_LENGTH_PATTERN = Pattern.compile("");
 
-    private final Map<String, InternalTopologyBuilder> builders;
+    private final SortedMap<String, InternalTopologyBuilder> builders; // Sort by topology name
 
     private ProcessorTopology globalTopology;
     private Map<String, StateStore> globalStateStores = new HashMap<>();
 
+    public TopologyMetadata() {
+        builders = new TreeMap<>();
+        log.debug("Building KafkaStreams app with no named topology");
+    }
+
     public TopologyMetadata(final InternalTopologyBuilder builder) {
-        builders = new HashMap<>();
+        builders = new TreeMap<>();
         builders.put(UNNAMED_TOPOLOGY, builder);
     }
 
-    public TopologyMetadata(final Map<String, InternalTopologyBuilder> builders) {
+    public TopologyMetadata(final SortedMap<String, InternalTopologyBuilder> builders) {
         this.builders = builders;
     }
 
     public int getNumStreamThreads(final StreamsConfig config) {
-        final int numStreamThreads;
-        if (hasNoNonGlobalTopology()) {
-            log.info("Overriding number of StreamThreads to zero for global-only topology");
-            numStreamThreads = 0;
-        } else {
-            numStreamThreads = config.getInt(StreamsConfig.NUM_STREAM_THREADS_CONFIG);
+        final int configuredNumStreamThreads = config.getInt(StreamsConfig.NUM_STREAM_THREADS_CONFIG);
+
+        // If the application uses named topologies, it's possible to start up with no topologies at all and only add them later
+        if (builders.isEmpty()) {
+            if (configuredNumStreamThreads != 0) {
+                log.info("Overriding number of StreamThreads to zero for empty topology");
+            }
+            return 0;
         }
 
-        // If the application uses named topologies, it may make sense to start with no threads as topologies may only be added later
-        if (numStreamThreads == 0 && !hasGlobalTopology() && !hasNamedTopologies()) {
+        // If there are topologies but they are all empty, this indicates a bug in user code
+        if (hasNoNonGlobalTopology() && !hasGlobalTopology()) {
             log.error("Topology with no input topics will create no stream threads and no global thread.");
             throw new TopologyException("Topology has no stream threads and no global threads, " +
-                    "must subscribe to at least one source topic or global table.");
+                                            "must subscribe to at least one source topic or global table.");
         }
-        return numStreamThreads;
+
+        // Lastly we check for an empty non-global topology and override the threads to zero if set otherwise
+        if (configuredNumStreamThreads != 0 && hasNoNonGlobalTopology()) {
+            log.info("Overriding number of StreamThreads to zero for global-only topology");
+            return 0;
+        }
+
+        return configuredNumStreamThreads;
     }
 
     public boolean hasNamedTopologies() {
+        // This includes the case of starting up with no named topologies at all
         return !builders.containsKey(UNNAMED_TOPOLOGY);
     }
 
@@ -146,9 +165,24 @@ public class TopologyMetadata {
         return evaluateConditionIsTrueForAnyBuilders(InternalTopologyBuilder::usesPatternSubscription);
     }
 
-    public TopologyDescription topologyDescription() {
-        // TODO KAFKA-12648: group topology description into NamedTopologies (sort by name?)
-        return builders.get(UNNAMED_TOPOLOGY).describe();
+    // Can be empty if app is started up with no Named Topologies, in order to add them on later
+    public boolean isEmpty() {
+        return builders.isEmpty();
+    }
+
+    public String topologyDescription() {
+        if (isEmpty()) {
+            return "";
+        }
+        final StringBuilder sb = new StringBuilder();
+
+        applyToEachBuilder(b -> {
+            sb.append(b.describe().toString());
+            sb.append("\n");
+        });
+
+        // trim final newline character
+        return sb.deleteCharAt(sb.length() - 1).toString();
     }
 
     public final void rewriteAndBuildTopology(final StreamsConfig config) {

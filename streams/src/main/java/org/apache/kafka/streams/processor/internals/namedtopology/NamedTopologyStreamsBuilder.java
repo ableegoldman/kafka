@@ -24,9 +24,16 @@ import java.util.Properties;
 public class NamedTopologyStreamsBuilder extends StreamsBuilder {
     final String topologyName;
 
-    public NamedTopologyStreamsBuilder(final String topologyName) {
+    /**
+     * @param topologyName any string representing your NamedTopology, all characters allowed except for '*'
+     * @throws IllegalArgumentException if the name contains the character '*'
+     */
+    public NamedTopologyStreamsBuilder(final String topologyName) throws IllegalArgumentException {
         super();
         this.topologyName = topologyName;
+        if (topologyName.contains("*")) {
+            throw new IllegalArgumentException("The character '*' is not allowed in a NamedTopology, please select a new name");
+        }
     }
 
     public synchronized NamedTopology buildNamedTopology(final Properties props) {
@@ -38,10 +45,6 @@ public class NamedTopologyStreamsBuilder extends StreamsBuilder {
 
     @Override
     public Topology getNewTopology() {
-        return new NamedTopology();
-    }
-
-    static NamedTopology emptyTopology() {
         return new NamedTopology();
     }
 }

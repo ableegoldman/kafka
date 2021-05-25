@@ -35,6 +35,7 @@ public class NamedTopology extends Topology {
             throw new IllegalStateException("Tried to set topologyName but the name was already set");
         }
         name = newTopologyName;
+        internalTopologyBuilder.setTopologyName(name);
     }
 
     public String name() {
@@ -45,8 +46,7 @@ public class NamedTopology extends Topology {
         return super.internalTopologyBuilder.fullSourceTopicNames();
     }
 
-    @Override
-    protected InternalTopologyBuilder getInternalTopologyBuilder() {
-        return new InternalTopologyBuilder(name);
+    InternalTopologyBuilder internalTopologyBuilder() {
+        return internalTopologyBuilder;
     }
 }

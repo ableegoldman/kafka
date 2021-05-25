@@ -54,11 +54,7 @@ import java.util.regex.Pattern;
  */
 public class Topology {
 
-    protected final InternalTopologyBuilder internalTopologyBuilder = getInternalTopologyBuilder();
-
-    protected InternalTopologyBuilder getInternalTopologyBuilder() {
-        return new InternalTopologyBuilder();
-    }
+    protected final InternalTopologyBuilder internalTopologyBuilder = new InternalTopologyBuilder();
 
     /**
      * Sets the {@code auto.offset.reset} configuration when

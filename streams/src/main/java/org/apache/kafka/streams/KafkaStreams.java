@@ -168,7 +168,7 @@ public class KafkaStreams implements AutoCloseable {
     private final ArrayList<StreamThreadStateStoreProvider> storeProviders;
     private final UUID processId;
     private final KafkaClientSupplier clientSupplier;
-    private final TopologyMetadata topologyMetadata;
+    protected final TopologyMetadata topologyMetadata;
 
     GlobalStreamThread globalStreamThread;
     private KafkaStreams.StateListener stateListener;
@@ -852,7 +852,7 @@ public class KafkaStreams implements AutoCloseable {
         ClientMetrics.addVersionMetric(streamsMetrics);
         ClientMetrics.addCommitIdMetric(streamsMetrics);
         ClientMetrics.addApplicationIdMetric(streamsMetrics, config.getString(StreamsConfig.APPLICATION_ID_CONFIG));
-        ClientMetrics.addTopologyDescriptionMetric(streamsMetrics, this.topologyMetadata.topologyDescription().toString());
+        ClientMetrics.addTopologyDescriptionMetric(streamsMetrics, this.topologyMetadata.topologyDescription());
         ClientMetrics.addStateMetric(streamsMetrics, (metricsConfig, now) -> state);
         ClientMetrics.addNumAliveStreamThreadMetric(streamsMetrics, (metricsConfig, now) -> getNumLiveStreamThreads());
 
@@ -1267,6 +1267,14 @@ public class KafkaStreams implements AutoCloseable {
             }
         } else {
             throw new IllegalStateException("The client is either already started or already stopped, cannot re-start");
+        }
+
+        if (topologyMetadata.isEmpty()) {
+            if (setState(State.REBALANCING)) {
+                log.debug("Transitioning directly to RUNNING for app with no named topologies");
+            } else {
+                throw new IllegalStateException("Unexpected error in transitioning empty KafkaStreams to RUNNING");
+            }
         }
     }
 

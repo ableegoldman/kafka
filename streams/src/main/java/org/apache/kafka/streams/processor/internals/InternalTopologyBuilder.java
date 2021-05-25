@@ -135,17 +135,9 @@ public class InternalTopologyBuilder {
     private StreamsConfig config = null;
 
     // The name of the topology this builder belongs to, or null if none
-    private final String namedTopology;
+    private String namedTopology;
 
     private boolean hasPersistentStores = false;
-
-    public InternalTopologyBuilder() {
-        this.namedTopology = null;
-    }
-
-    public InternalTopologyBuilder(final String namedTopology) {
-        this.namedTopology = namedTopology;
-    }
 
     public static class StateStoreFactory<S extends StateStore> {
         private final StoreBuilder<S> builder;
@@ -349,6 +341,11 @@ public class InternalTopologyBuilder {
         Sink<KIn, VIn> describe() {
             return new Sink<>(name, topicExtractor);
         }
+    }
+
+    public void setTopologyName(final String namedTopology) {
+        Objects.requireNonNull(namedTopology, "named topology can't be null");
+        this.namedTopology = namedTopology;
     }
 
     // public for testing only
@@ -1380,7 +1377,7 @@ public class InternalTopologyBuilder {
     }
 
     public boolean hasNoNonGlobalTopology() {
-        return !usesPatternSubscription() && sourceTopicCollection().isEmpty();
+        return nodeToSourcePatterns.isEmpty() && sourceTopicNames.isEmpty();
     }
 
     public boolean hasGlobalStores() {
@@ -1398,7 +1395,7 @@ public class InternalTopologyBuilder {
     }
 
     public TopologyDescription describe() {
-        final TopologyDescription description = new TopologyDescription();
+        final TopologyDescription description = new TopologyDescription(namedTopology);
 
         for (final Map.Entry<Integer, Set<String>> nodeGroup : makeNodeGroups().entrySet()) {
 
@@ -1934,6 +1931,11 @@ public class InternalTopologyBuilder {
     public final static class TopologyDescription implements org.apache.kafka.streams.TopologyDescription {
         private final TreeSet<TopologyDescription.Subtopology> subtopologies = new TreeSet<>(SUBTOPOLOGY_COMPARATOR);
         private final TreeSet<TopologyDescription.GlobalStore> globalStores = new TreeSet<>(GLOBALSTORE_COMPARATOR);
+        private final String namedTopology;
+
+        public TopologyDescription(final String namedTopology) {
+            this.namedTopology = namedTopology;
+        }
 
         public void addSubtopology(final TopologyDescription.Subtopology subtopology) {
             subtopologies.add(subtopology);
@@ -1956,7 +1958,12 @@ public class InternalTopologyBuilder {
         @Override
         public String toString() {
             final StringBuilder sb = new StringBuilder();
-            sb.append("Topologies:\n ");
+
+            if (namedTopology == null) {
+                sb.append("Topologies:\n ");
+            } else {
+                sb.append(namedTopology).append(":\n ");
+            }
             final TopologyDescription.Subtopology[] sortedSubtopologies =
                 subtopologies.descendingSet().toArray(new TopologyDescription.Subtopology[0]);
             final TopologyDescription.GlobalStore[] sortedGlobalStores =
@@ -2072,9 +2079,8 @@ public class InternalTopologyBuilder {
         return maybeDecorateInternalSourceTopics(sourceTopicNames);
     }
 
-    public boolean hasNamedTopologies() {
-        // TODO KAFKA-12648: covered by Pt. 2
-        return false;
+    public boolean hasNamedTopology() {
+        return namedTopology != null;
     }
 
     // following functions are for test only

@@ -20,39 +20,73 @@ import org.apache.kafka.common.annotation.InterfaceStability.Evolving;
 import org.apache.kafka.streams.KafkaClientSupplier;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.TopologyDescription;
+import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder;
 import org.apache.kafka.streams.processor.internals.TopologyMetadata;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 /**
- * Note: global stores are not currently supported with NamedTopologies
+ * This is currently an internal and experimental feature for enabling certain kinds of topology upgrades. Use at
+ * your own risk.
+ *
+ * Status: basic architecture implemented but no actual upgrades are supported yet
+ *
+ * Note: global stores are not supported with NamedTopologies, nor will they be in the first iteration of this feature
  */
 @Evolving
 public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
 
+    final Map<String, NamedTopology> nameToTopology = new HashMap<>();
+
     public KafkaStreamsNamedTopologyWrapper(final NamedTopology topology, final Properties props, final KafkaClientSupplier clientSupplier) {
-        super(new TopologyMetadata(topology.getInternalTopologyBuilder()), new StreamsConfig(props), clientSupplier);
+        super(new TopologyMetadata(topology.internalTopologyBuilder()), new StreamsConfig(props), clientSupplier);
+        nameToTopology.put(topology.name(), topology);
     }
 
     public KafkaStreamsNamedTopologyWrapper(final Properties props, final KafkaClientSupplier clientSupplier) {
-        super(new TopologyMetadata(NamedTopologyStreamsBuilder.emptyTopology().getInternalTopologyBuilder()), new StreamsConfig(props), clientSupplier);
+        super(new TopologyMetadata(), new StreamsConfig(props), clientSupplier);
     }
 
     public KafkaStreamsNamedTopologyWrapper(final List<NamedTopology> topologies, final Properties props, final KafkaClientSupplier clientSupplier) {
-        super(new TopologyMetadata(topologies.stream().collect(Collectors.toMap(NamedTopology::name, NamedTopology::getInternalTopologyBuilder))), new StreamsConfig(props), clientSupplier);
+        super(
+            new TopologyMetadata(topologies.stream().collect(Collectors.toMap(
+                NamedTopology::name,
+                NamedTopology::internalTopologyBuilder,
+                (v1, v2) -> { throw new IllegalArgumentException("Topology names must be unique"); },
+                () -> new TreeMap<>()))),
+            new StreamsConfig(props),
+            clientSupplier
+        );
+        for (final NamedTopology topology : topologies) {
+            nameToTopology.put(topology.name(), topology);
+        }
     }
 
     public NamedTopology getTopologyByName(final String name) {
-        throw new UnsupportedOperationException();
+        if (nameToTopology.containsKey(name)) {
+            return nameToTopology.get(name);
+        } else {
+            throw new IllegalArgumentException("Unable to locate a NamedTopology called " + name);
+        }
     }
 
     public void addNamedTopology(final NamedTopology topology) {
+        nameToTopology.put(topology.name(), topology);
         throw new UnsupportedOperationException();
     }
 
     public void removeNamedTopology(final NamedTopology topology) {
         throw new UnsupportedOperationException();
+    }
+
+    public String getFullTopologyDescription() {
+        return topologyMetadata.topologyDescription();
     }
 }
