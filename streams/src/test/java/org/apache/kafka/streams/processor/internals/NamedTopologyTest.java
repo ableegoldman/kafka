@@ -2,6 +2,7 @@ package org.apache.kafka.streams.processor.internals;
 
 import org.apache.kafka.streams.KafkaClientSupplier;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.errors.TopologyException;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
 import org.apache.kafka.streams.processor.internals.namedtopology.KafkaStreamsNamedTopologyWrapper;
 import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopology;
@@ -12,9 +13,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Properties;
+import java.util.regex.Pattern;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -60,21 +60,32 @@ public class NamedTopologyTest {
     }
 
     @Test
-    public void shouldStartUpEmptyNamedTopology() throws Exception {
+    public void shouldStartUpAndGoToRunningWithEmptyNamedTopology() throws Exception {
         streams = new KafkaStreamsNamedTopologyWrapper(props, clientSupplier);
         IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
     }
 
     @Test
-    public void shouldStartUpSingleNamedTopology() throws Exception {
+    public void shouldBuildSingleNamedTopology() {
+        builder1.stream("stream-1").filter((k, v) -> !k.equals(v)).to("output-1");
+
         streams = new KafkaStreamsNamedTopologyWrapper(builder1.buildNamedTopology(props), props, clientSupplier);
-        IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
     }
 
     @Test
-    public void shouldStartUpMultipleNamedTopologies() throws Exception {
-        streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(builder1, builder2, builder3), props, clientSupplier);
-        IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
+    public void shouldBuildMultipleIdenticalNamedTopologyWithRepartition() {
+        builder1.stream("stream-1").selectKey((k, v) -> v).groupByKey().count().toStream().to("output-1");
+        builder2.stream("stream-2").selectKey((k, v) -> v).groupByKey().count().toStream().to("output-2");
+        builder3.stream("stream-3").selectKey((k, v) -> v).groupByKey().count().toStream().to("output-3");
+
+        streams = new KafkaStreamsNamedTopologyWrapper(
+            asList(
+                builder1.buildNamedTopology(props),
+                builder2.buildNamedTopology(props),
+                builder3.buildNamedTopology(props)),
+            props,
+            clientSupplier
+        );
     }
 
     @Test
@@ -90,31 +101,180 @@ public class NamedTopologyTest {
 
     @Test
     public void shouldThrowIllegalArgumentWhenLookingUpNonExistentTopologyByName() {
-        streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(builder1), props, clientSupplier);
+        streams = new KafkaStreamsNamedTopologyWrapper(builder1.buildNamedTopology(props), props, clientSupplier);
         assertThrows(IllegalArgumentException.class, () -> streams.getTopologyByName("non-existent-topology"));
+    }
+
+    @Test
+    public void shouldThrowTopologyExceptionWhenMultipleNamedTopologiesCreateStreamFromSameInputTopic() {
+        builder1.stream("stream");
+        builder2.stream("stream");
+
+        assertThrows(
+            TopologyException.class,
+            () -> streams = new KafkaStreamsNamedTopologyWrapper(
+            asList(
+                builder1.buildNamedTopology(props),
+                builder2.buildNamedTopology(props)),
+            props,
+            clientSupplier)
+        );
+    }
+
+    @Test
+    public void shouldThrowTopologyExceptionWhenMultipleNamedTopologiesCreateTableFromSameInputTopic() {
+        builder1.table("table");
+        builder2.table("table");
+
+        assertThrows(
+            TopologyException.class,
+            () -> streams = new KafkaStreamsNamedTopologyWrapper(
+                asList(
+                    builder1.buildNamedTopology(props),
+                    builder2.buildNamedTopology(props)),
+                props,
+                clientSupplier)
+        );
+    }
+
+    @Test
+    public void shouldThrowTopologyExceptionWhenMultipleNamedTopologiesCreateStreamAndTableFromSameInputTopic() {
+        builder1.stream("input");
+        builder2.table("input");
+
+        assertThrows(
+            TopologyException.class,
+            () -> streams = new KafkaStreamsNamedTopologyWrapper(
+                asList(
+                    builder1.buildNamedTopology(props),
+                    builder2.buildNamedTopology(props)),
+                props,
+                clientSupplier)
+        );
+    }
+
+    @Test
+    public void shouldThrowTopologyExceptionWhenMultipleNamedTopologiesCreateStreamFromOverlappingInputTopicCollection() {
+        builder1.stream("stream");
+        builder2.stream(asList("unique-input", "stream"));
+
+        assertThrows(
+            TopologyException.class,
+            () -> streams = new KafkaStreamsNamedTopologyWrapper(
+                asList(
+                    builder1.buildNamedTopology(props),
+                    builder2.buildNamedTopology(props)),
+                props,
+                clientSupplier)
+        );
+    }
+
+    @Test
+    public void shouldThrowTopologyExceptionWhenMultipleNamedTopologiesCreateStreamFromSamePattern() {
+        builder1.stream(Pattern.compile("some-regex"));
+        builder2.stream(Pattern.compile("some-regex"));
+
+        assertThrows(
+            TopologyException.class,
+            () -> streams = new KafkaStreamsNamedTopologyWrapper(
+                asList(
+                    builder1.buildNamedTopology(props),
+                    builder2.buildNamedTopology(props)),
+                props,
+                clientSupplier)
+        );
     }
 
     @Test
     public void shouldDescribeWithSingleNamedTopology() {
         builder1.stream("input").filter((k, v) -> !k.equals(v)).to("output");
-        throw new AssertionError("TODO KAFKA-12648");
+        streams = new KafkaStreamsNamedTopologyWrapper(builder1.buildNamedTopology(props), props, clientSupplier);
+
+        assertThat(
+            streams.getFullTopologyDescription(),
+            equalTo(
+                "topology-1:\n"
+                    + "   Sub-topology: 0\n"
+                    + "    Source: KSTREAM-SOURCE-0000000000 (topics: [input-1])\n"
+                    + "      --> none\n"
+                    + "\n"
+                    + "  Sub-topology: 1\n"
+                    + "    Source: KSTREAM-SOURCE-0000000001 (topics: [input])\n"
+                    + "      --> KSTREAM-FILTER-0000000002\n"
+                    + "    Processor: KSTREAM-FILTER-0000000002 (stores: [])\n"
+                    + "      --> KSTREAM-SINK-0000000003\n"
+                    + "      <-- KSTREAM-SOURCE-0000000001\n"
+                    + "    Sink: KSTREAM-SINK-0000000003 (topic: output)\n"
+                    + "      <-- KSTREAM-FILTER-0000000002\n")
+        );
     }
 
     @Test
     public void shouldDescribeWithMultipleNamedTopologies() {
-        throw new AssertionError("TODO KAFKA-12648");
+        builder1.stream("stream-1").filter((k, v) -> !k.equals(v)).to("output-1");
+        builder2.stream("stream-2").filter((k, v) -> !k.equals(v)).to("output-2");
+        builder3.stream("stream-3").filter((k, v) -> !k.equals(v)).to("output-3");
+
+        streams = new KafkaStreamsNamedTopologyWrapper(
+            asList(
+                builder1.buildNamedTopology(props),
+                builder2.buildNamedTopology(props),
+                builder3.buildNamedTopology(props)),
+            props,
+            clientSupplier
+        );
+
+        assertThat(
+            streams.getFullTopologyDescription(),
+            equalTo(
+                "topology-1:\n"
+                    + "   Sub-topology: 0\n"
+                    + "    Source: KSTREAM-SOURCE-0000000000 (topics: [input-1])\n"
+                    + "      --> none\n"
+                    + "\n"
+                    + "  Sub-topology: 1\n"
+                    + "    Source: KSTREAM-SOURCE-0000000001 (topics: [stream-1])\n"
+                    + "      --> KSTREAM-FILTER-0000000002\n"
+                    + "    Processor: KSTREAM-FILTER-0000000002 (stores: [])\n"
+                    + "      --> KSTREAM-SINK-0000000003\n"
+                    + "      <-- KSTREAM-SOURCE-0000000001\n"
+                    + "    Sink: KSTREAM-SINK-0000000003 (topic: output-1)\n"
+                    + "      <-- KSTREAM-FILTER-0000000002\n"
+                    + "\n"
+                    + "topology-2:\n"
+                    + "   Sub-topology: 0\n"
+                    + "    Source: KSTREAM-SOURCE-0000000000 (topics: [input-2])\n"
+                    + "      --> none\n"
+                    + "\n"
+                    + "  Sub-topology: 1\n"
+                    + "    Source: KSTREAM-SOURCE-0000000001 (topics: [stream-2])\n"
+                    + "      --> KSTREAM-FILTER-0000000002\n"
+                    + "    Processor: KSTREAM-FILTER-0000000002 (stores: [])\n"
+                    + "      --> KSTREAM-SINK-0000000003\n"
+                    + "      <-- KSTREAM-SOURCE-0000000001\n"
+                    + "    Sink: KSTREAM-SINK-0000000003 (topic: output-2)\n"
+                    + "      <-- KSTREAM-FILTER-0000000002\n"
+                    + "\n"
+                    + "topology-3:\n"
+                    + "   Sub-topology: 0\n"
+                    + "    Source: KSTREAM-SOURCE-0000000000 (topics: [input-3])\n"
+                    + "      --> none\n"
+                    + "\n"
+                    + "  Sub-topology: 1\n"
+                    + "    Source: KSTREAM-SOURCE-0000000001 (topics: [stream-3])\n"
+                    + "      --> KSTREAM-FILTER-0000000002\n"
+                    + "    Processor: KSTREAM-FILTER-0000000002 (stores: [])\n"
+                    + "      --> KSTREAM-SINK-0000000003\n"
+                    + "      <-- KSTREAM-SOURCE-0000000001\n"
+                    + "    Sink: KSTREAM-SINK-0000000003 (topic: output-3)\n"
+                    + "      <-- KSTREAM-FILTER-0000000002\n")
+        );
     }
 
     @Test
     public void shouldDescribeWithEmptyNamedTopology() {
-        throw new AssertionError("TODO KAFKA-12648");
-    }
+        streams = new KafkaStreamsNamedTopologyWrapper(props, clientSupplier);
 
-    private List<NamedTopology> buildNamedTopologies(final NamedTopologyStreamsBuilder... builders) {
-        final List<NamedTopology> topologies = new ArrayList<>();
-        for (final NamedTopologyStreamsBuilder builder : builders) {
-            topologies.add(builder.buildNamedTopology(props));
-        }
-        return topologies;
+        assertThat(streams.getFullTopologyDescription(), equalTo(""));
     }
 }

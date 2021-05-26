@@ -19,16 +19,15 @@ package org.apache.kafka.streams.processor.internals;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.errors.TopologyException;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder.TopicsInfo;
-import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder.TopologyDescription;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -178,17 +177,35 @@ public class TopologyMetadata {
 
         applyToEachBuilder(b -> {
             sb.append(b.describe().toString());
-            sb.append("\n");
         });
 
         // trim final newline character
-        return sb.deleteCharAt(sb.length() - 1).toString();
+        sb.setLength(sb.length() - 1);
+        return sb.toString();
     }
 
     public final void rewriteAndBuildTopology(final StreamsConfig config) {
+        // As we go, check each topology for overlap in the set of input topics/patterns, as this is not supported
+        final Set<String> allInputTopics = new HashSet<>();
+
         applyToEachBuilder(builder -> {
             builder.rewriteTopology(config);
             builder.buildTopology();
+
+            final int numInputTopics = allInputTopics.size();
+            final List<String> inputTopics = builder.fullSourceTopicNames();
+            final Collection<String> inputPatterns = builder.allSourcePatternStrings();
+
+            final int numNewInputTopics = inputTopics.size() + inputPatterns.size();
+            allInputTopics.addAll(inputTopics);
+            if (allInputTopics.size() != numInputTopics + numNewInputTopics) {
+                inputTopics.retainAll(allInputTopics);
+                inputPatterns.retainAll(allInputTopics);
+                inputTopics.addAll(inputPatterns);
+                log.error("Tried to add the NamedTopology {} but it had overlap with other input topics: {}", builder.namedTopology(), inputTopics);
+                throw new TopologyException("Named Topologies may not subscribe to the same input topics or patterns");
+            }
+
             final ProcessorTopology globalTopology = builder.buildGlobalStateTopology();
             if (globalTopology != null) {
                 if (builder.namedTopology() != null) {

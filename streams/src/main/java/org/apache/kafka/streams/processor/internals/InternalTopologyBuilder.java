@@ -1330,7 +1330,7 @@ public class InternalTopologyBuilder {
                                             + "applicationId hasn't been set. Call "
                                             + "setApplicationId first");
         }
-        if (namedTopology != null) {
+        if (hasNamedTopology()) {
             return applicationId + "-" + namedTopology + "-" + topic;
         } else {
             return applicationId + "-" + topic;
@@ -2079,7 +2079,11 @@ public class InternalTopologyBuilder {
         return maybeDecorateInternalSourceTopics(sourceTopicNames);
     }
 
-    public boolean hasNamedTopology() {
+    public List<String> allSourcePatternStrings() {
+        return nodeToSourcePatterns.values().stream().map(Pattern::pattern).collect(Collectors.toList());
+    }
+
+    private boolean hasNamedTopology() {
         return namedTopology != null;
     }
 
