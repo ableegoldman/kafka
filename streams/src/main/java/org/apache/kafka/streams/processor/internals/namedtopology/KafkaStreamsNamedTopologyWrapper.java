@@ -20,14 +20,11 @@ import org.apache.kafka.common.annotation.InterfaceStability.Evolving;
 import org.apache.kafka.streams.KafkaClientSupplier;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.TopologyDescription;
-import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder;
 import org.apache.kafka.streams.processor.internals.TopologyMetadata;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -59,7 +56,9 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
             new TopologyMetadata(topologies.stream().collect(Collectors.toMap(
                 NamedTopology::name,
                 NamedTopology::internalTopologyBuilder,
-                (v1, v2) -> { throw new IllegalArgumentException("Topology names must be unique"); },
+                (v1, v2) -> {
+                    throw new IllegalArgumentException("Topology names must be unique");
+                },
                 () -> new TreeMap<>()))),
             new StreamsConfig(props),
             clientSupplier

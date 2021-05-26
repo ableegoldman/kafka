@@ -65,7 +65,6 @@ public class NamedTopologyIntegrationTest {
      *
      */
 
-
     private static final int NUM_BROKERS = 1;
 
     public static final EmbeddedKafkaCluster CLUSTER = new EmbeddedKafkaCluster(NUM_BROKERS);
@@ -140,5 +139,9 @@ public class NamedTopologyIntegrationTest {
             topologies.add(builder.buildNamedTopology(props));
         }
         return topologies;
+    }
+
+    private void buildComplexTopology(final NamedTopologyStreamsBuilder builder) {
+
     }
 }
