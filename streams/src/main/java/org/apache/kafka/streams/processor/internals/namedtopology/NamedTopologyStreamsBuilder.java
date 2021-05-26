@@ -25,14 +25,14 @@ public class NamedTopologyStreamsBuilder extends StreamsBuilder {
     final String topologyName;
 
     /**
-     * @param topologyName any string representing your NamedTopology, all characters allowed except for '*'
-     * @throws IllegalArgumentException if the name contains the character '*'
+     * @param topologyName any string representing your NamedTopology, all characters allowed except for '_'
+     * @throws IllegalArgumentException if the name contains the character '_'
      */
     public NamedTopologyStreamsBuilder(final String topologyName) throws IllegalArgumentException {
         super();
         this.topologyName = topologyName;
-        if (topologyName.contains("*")) {
-            throw new IllegalArgumentException("The character '*' is not allowed in a NamedTopology, please select a new name");
+        if (topologyName.contains("_")) {
+            throw new IllegalArgumentException("The character '_' is not allowed in a NamedTopology, please select a new name");
         }
     }
 

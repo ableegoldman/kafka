@@ -72,7 +72,7 @@ public class NamedTopologyTest {
 
     @Test
     public void shouldThrowIllegalArgumentOnIllegalName() {
-        assertThrows(IllegalArgumentException.class, () -> new NamedTopologyStreamsBuilder("**-not-allowed-**"));
+        assertThrows(IllegalArgumentException.class, () -> new NamedTopologyStreamsBuilder("__not-allowed__"));
     }
 
     @Test

@@ -51,8 +51,8 @@ import org.slf4j.LoggerFactory;
 public class TopologyMetadata {
     private final Logger log = LoggerFactory.getLogger(TopologyMetadata.class);
 
-    // the '*' character is not allowed for topology names, thus it is safe to use here to indicate that it is not a named topology
-    private static final String UNNAMED_TOPOLOGY = "*UNNAMED_TOPOLOGY*";
+    // the '_' character is not allowed for topology names, thus it is safe to use here to indicate that it is not a named topology
+    private static final String UNNAMED_TOPOLOGY = "__UNNAMED_TOPOLOGY__";
     private static final Pattern EMPTY_ZERO_LENGTH_PATTERN = Pattern.compile("");
 
     private final SortedMap<String, InternalTopologyBuilder> builders; // Sort by topology name
