@@ -1352,15 +1352,19 @@ public class InternalTopologyBuilder {
         }
     }
 
-    private String buildSourceTopicsPatternString(final List<String> allSourceTopics, final Collection<Pattern> sourcePatterns) {
+    private static String buildSourceTopicsPatternString(final List<String> allSourceTopics, final Collection<Pattern> sourcePatterns) {
         final StringBuilder builder = new StringBuilder();
 
         for (final String topic : allSourceTopics) {
             builder.append(topic).append("|");
         }
 
-        for (final Pattern sourcePattern : nodeToSourcePatterns.values()) {
+        for (final Pattern sourcePattern : sourcePatterns) {
             builder.append(sourcePattern.pattern()).append("|");
+        }
+
+        if (builder.length() > 0) {
+            builder.setLength(builder.length() - 1);
         }
 
         return builder.toString();

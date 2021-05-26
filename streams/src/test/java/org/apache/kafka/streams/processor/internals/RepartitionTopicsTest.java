@@ -98,6 +98,7 @@ public class RepartitionTopicsTest {
 
     @Test
     public void shouldSetupRepartitionTopics() {
+        expect(internalTopologyBuilder.hasNamedTopology()).andStubReturn(false);
         expect(internalTopologyBuilder.topicGroups())
             .andReturn(mkMap(mkEntry(SUBTOPOLOGY_0, TOPICS_INFO1), mkEntry(SUBTOPOLOGY_1, TOPICS_INFO2)));
         final Set<String> coPartitionGroup1 = mkSet(SOURCE_TOPIC_NAME1, SOURCE_TOPIC_NAME2);
@@ -137,6 +138,7 @@ public class RepartitionTopicsTest {
 
     @Test
     public void shouldThrowMissingSourceTopicException() {
+        expect(internalTopologyBuilder.hasNamedTopology()).andStubReturn(false);
         expect(internalTopologyBuilder.topicGroups())
             .andReturn(mkMap(mkEntry(SUBTOPOLOGY_0, TOPICS_INFO1), mkEntry(SUBTOPOLOGY_1, TOPICS_INFO2)));
         expect(internalTopologyBuilder.copartitionGroups()).andReturn(Collections.emptyList());
@@ -163,6 +165,7 @@ public class RepartitionTopicsTest {
     public void shouldThrowTaskAssignmentExceptionIfPartitionCountCannotBeComputedForAllRepartitionTopics() {
         final RepartitionTopicConfig repartitionTopicConfigWithoutPartitionCount =
             new RepartitionTopicConfig(REPARTITION_WITHOUT_PARTITION_COUNT, TOPIC_CONFIG5);
+        expect(internalTopologyBuilder.hasNamedTopology()).andStubReturn(false);
         expect(internalTopologyBuilder.topicGroups())
             .andReturn(mkMap(
                 mkEntry(SUBTOPOLOGY_0, TOPICS_INFO1),
@@ -201,6 +204,7 @@ public class RepartitionTopicsTest {
             ),
             Collections.emptyMap()
         );
+        expect(internalTopologyBuilder.hasNamedTopology()).andStubReturn(false);
         expect(internalTopologyBuilder.topicGroups())
             .andReturn(mkMap(
                 mkEntry(SUBTOPOLOGY_0, topicsInfo),
@@ -244,6 +248,7 @@ public class RepartitionTopicsTest {
             ),
             Collections.emptyMap()
         );
+        expect(internalTopologyBuilder.hasNamedTopology()).andStubReturn(false);
         expect(internalTopologyBuilder.topicGroups())
             .andReturn(mkMap(
                 mkEntry(SUBTOPOLOGY_0, topicsInfo),
@@ -298,6 +303,7 @@ public class RepartitionTopicsTest {
             ),
             Collections.emptyMap()
         );
+        expect(internalTopologyBuilder.hasNamedTopology()).andStubReturn(false);
         expect(internalTopologyBuilder.topicGroups())
             .andReturn(mkMap(
                 mkEntry(SUBTOPOLOGY_0, topicsInfo),
@@ -347,6 +353,7 @@ public class RepartitionTopicsTest {
             Collections.emptyMap(),
             Collections.emptyMap()
         );
+        expect(internalTopologyBuilder.hasNamedTopology()).andStubReturn(false);
         expect(internalTopologyBuilder.topicGroups())
             .andReturn(mkMap(mkEntry(SUBTOPOLOGY_0, topicsInfo)));
         expect(internalTopologyBuilder.copartitionGroups()).andReturn(Collections.emptySet());

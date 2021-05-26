@@ -154,7 +154,12 @@ public class TopologyMetadata {
     Pattern sourceTopicPattern() {
         final StringBuilder patternBuilder = new StringBuilder();
 
-        applyToEachBuilder(b -> patternBuilder.append(b.sourceTopicsPatternString()));
+        applyToEachBuilder(b -> {
+            final String patternString = b.sourceTopicsPatternString();
+            if (patternString.length() > 0) {
+                patternBuilder.append(patternString).append("|");
+            }
+        });
 
         if (patternBuilder.length() > 0) {
             patternBuilder.setLength(patternBuilder.length() - 1);

@@ -40,6 +40,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.regex.Pattern;
 
 import static org.apache.kafka.streams.integration.utils.IntegrationTestUtils.safeUniqueTestName;
 
@@ -141,6 +142,29 @@ public class NamedTopologyIntegrationTest {
         builder3.stream(inputStream3).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-3");
         streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(builder1, builder2, builder3), props, clientSupplier);
         IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
+    }
+
+    @Test
+    public void shouldAllowPatternSubscriptionWithMultipleNamedTopologies() throws Exception {
+        builder1.stream(Pattern.compile(inputStream1)).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-1");
+        builder2.stream(Pattern.compile(inputStream2)).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-2");
+        builder3.stream(Pattern.compile(inputStream3)).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-3");
+        streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(builder1, builder2, builder3), props, clientSupplier);
+        IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
+
+        // TODO -- make sure to actually read some data from pattern topics
+    }
+
+    @Test
+    public void shouldAllowMixedCollectionAndPatternSubscriptionWithMultipleNamedTopologies() throws Exception {
+        builder1.stream(inputStream1).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-1");
+        builder2.stream(Pattern.compile(inputStream2)).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-2");
+        builder3.stream(Pattern.compile(inputStream3)).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-3");
+        streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(builder1, builder2, builder3), props, clientSupplier);
+        IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
+
+        // TODO -- make sure to actually read some data from source and pattern topics
+
     }
 
     private List<NamedTopology> buildNamedTopologies(final NamedTopologyStreamsBuilder... builders) {

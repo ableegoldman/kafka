@@ -134,7 +134,7 @@ public class ProcessorStateManagerTest {
                 put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy:1234");
                 put(StreamsConfig.STATE_DIR_CONFIG, baseDir.getPath());
             }
-        }), new MockTime(), true);
+        }), new MockTime(), true, true);
         checkpointFile = new File(stateDirectory.getOrCreateDirectoryForTask(taskId), CHECKPOINT_FILE_NAME);
         checkpoint = new OffsetCheckpoint(checkpointFile);
 
@@ -155,8 +155,20 @@ public class ProcessorStateManagerTest {
         final String storeName = "store";
 
         assertThat(
-            ProcessorStateManager.storeChangelogTopic(applicationId, storeName, taskId.namedTopology()),
+            ProcessorStateManager.storeChangelogTopic(applicationId, storeName, null),
             is(applicationId + "-" + storeName + "-changelog")
+        );
+    }
+
+    @Test
+    public void shouldReturnDefaultChangelogTopicNameWithNamedTopology() {
+        final String applicationId = "appId";
+        final String namedTopology = "namedTopology";
+        final String storeName = "store";
+
+        assertThat(
+            ProcessorStateManager.storeChangelogTopic(applicationId, storeName, namedTopology),
+            is(applicationId + "-" + namedTopology + "-" + storeName + "-changelog")
         );
     }
 

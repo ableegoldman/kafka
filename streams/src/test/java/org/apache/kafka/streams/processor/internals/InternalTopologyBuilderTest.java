@@ -122,7 +122,7 @@ public class InternalTopologyBuilderTest {
         builder.addSource(null, "source", null, stringSerde.deserializer(), stringSerde.deserializer(), Pattern.compile("test-.*"));
         builder.initializeSubscription();
 
-        assertThat(expectedPattern.pattern(), builder.sourceTopicsPatternString(), equalTo("test-*"));
+        assertThat(expectedPattern.pattern(), builder.sourceTopicsPatternString(), equalTo("test-.*"));
 
         assertThat(builder.offsetResetStrategy("test-topic"), equalTo(OffsetResetStrategy.NONE));
     }
@@ -306,7 +306,7 @@ public class InternalTopologyBuilderTest {
         final Pattern expectedPattern = Pattern.compile("X-topic-3|topic-1|topic-2|topic-4|topic-5");
         final String patternString = builder.sourceTopicsPatternString();
 
-        assertEquals(expectedPattern.pattern(), Pattern.compile(patternString.substring(0, patternString.length() - 2)).pattern());
+        assertEquals(expectedPattern.pattern(), Pattern.compile(patternString).pattern());
     }
 
     @Test
@@ -330,7 +330,7 @@ public class InternalTopologyBuilderTest {
 
         final String patternString = builder.sourceTopicsPatternString();
 
-        assertEquals(expectedPattern.pattern(), Pattern.compile(patternString.substring(0, patternString.length() - 2)).pattern());
+        assertEquals(expectedPattern.pattern(), Pattern.compile(patternString).pattern());
     }
 
     @Test
@@ -360,7 +360,7 @@ public class InternalTopologyBuilderTest {
         builder.initializeSubscription();
         final String patternString = builder.sourceTopicsPatternString();
 
-        assertEquals(expectedPattern.pattern(), Pattern.compile(patternString.substring(0, patternString.length() - 2)).pattern());
+        assertEquals(expectedPattern.pattern(), Pattern.compile(patternString).pattern());
     }
 
     @Test
@@ -371,7 +371,7 @@ public class InternalTopologyBuilderTest {
         builder.initializeSubscription();
         final String patternString = builder.sourceTopicsPatternString();
 
-        assertEquals(expectedPattern.pattern(), Pattern.compile(patternString.substring(0, patternString.length() - 2)).pattern());
+        assertEquals(expectedPattern.pattern(), Pattern.compile(patternString).pattern());
     }
 
     @Test
@@ -382,7 +382,7 @@ public class InternalTopologyBuilderTest {
         builder.initializeSubscription();
         final String patternString = builder.sourceTopicsPatternString();
 
-        assertEquals(expectedPattern.pattern(), Pattern.compile(patternString.substring(0, patternString.length() - 2)).pattern());
+        assertEquals(expectedPattern.pattern(), Pattern.compile(patternString).pattern());
     }
 
     @Test
