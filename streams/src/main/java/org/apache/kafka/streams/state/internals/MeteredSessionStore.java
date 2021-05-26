@@ -93,8 +93,8 @@ public class MeteredSessionStore<K, V>
     public void init(final StateStoreContext context,
                      final StateStore root) {
         this.context = context instanceof InternalProcessorContext ? (InternalProcessorContext) context : null;
-        initStoreSerde(context);
         taskId = context.taskId();
+        initStoreSerde(context);
         streamsMetrics = (StreamsMetricsImpl) context.metrics();
 
         registerMetrics();

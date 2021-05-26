@@ -126,7 +126,7 @@ public class InternalTopologyBuilder {
 
     private String applicationId = null;
 
-    private String sourceTopicPatternString = null;
+    private String sourceTopicPatternString = "";
 
     private List<String> sourceTopicCollection = null;
 
@@ -1250,9 +1250,11 @@ public class InternalTopologyBuilder {
             latestResetPatterns.stream().anyMatch(p -> p.matcher(topic).matches())) {
             return LATEST;
         } else if (maybeDecorateInternalSourceTopics(sourceTopicNames).contains(topic)
-                || Pattern.compile(sourceTopicPatternString).matcher(topic).matches()) {
+                || Pattern.compile(sourceTopicPatternString).matcher(topic).matches()
+                || !hasNamedTopology()) {
             return NONE;
         } else {
+            // return null if the topic wasn't found at all while using NamedTopologies as it's likely in another
             return null;
         }
     }
