@@ -1046,7 +1046,7 @@ public class InternalTopologyBuilder {
 
                     // remember the changelog topic if this state store is change-logging enabled
                     if (stateStoreFactory.loggingEnabled() && !storeToChangelogTopic.containsKey(stateStoreName)) {
-                        final String changelogTopic = ProcessorStateManager.storeChangelogTopic(applicationId, stateStoreName);
+                        final String changelogTopic = ProcessorStateManager.storeChangelogTopic(applicationId, stateStoreName, namedTopology);
                         storeToChangelogTopic.put(stateStoreName, changelogTopic);
                         changelogTopicToStore.put(changelogTopic, stateStoreName);
                     }
@@ -2083,7 +2083,7 @@ public class InternalTopologyBuilder {
         return nodeToSourcePatterns.values().stream().map(Pattern::pattern).collect(Collectors.toList());
     }
 
-    private boolean hasNamedTopology() {
+    public boolean hasNamedTopology() {
         return namedTopology != null;
     }
 

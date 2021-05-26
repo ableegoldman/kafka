@@ -147,7 +147,7 @@ public class MeteredTimestampedWindowStoreTest {
     @Test
     public void shouldPassDefaultChangelogTopicNameToStateStoreSerdeIfLoggingDisabled() {
         final String defaultChangelogTopicName =
-            ProcessorStateManager.storeChangelogTopic(context.applicationId(), STORE_NAME);
+            ProcessorStateManager.storeChangelogTopic(context.applicationId(), STORE_NAME, context.taskId().namedTopology());
         doShouldPassChangelogTopicNameToStateStoreSerde(defaultChangelogTopicName);
     }
 

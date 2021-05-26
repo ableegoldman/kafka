@@ -85,15 +85,16 @@ import static org.junit.Assert.fail;
 public class ProcessorStateManagerTest {
 
     private final String applicationId = "test-application";
+    private final TaskId taskId = new TaskId(0, 1, "My-Topology");
     private final String persistentStoreName = "persistentStore";
     private final String persistentStoreTwoName = "persistentStore2";
     private final String nonPersistentStoreName = "nonPersistentStore";
     private final String persistentStoreTopicName =
-        ProcessorStateManager.storeChangelogTopic(applicationId, persistentStoreName);
+        ProcessorStateManager.storeChangelogTopic(applicationId, persistentStoreName, taskId.namedTopology());
     private final String persistentStoreTwoTopicName =
-        ProcessorStateManager.storeChangelogTopic(applicationId, persistentStoreTwoName);
+        ProcessorStateManager.storeChangelogTopic(applicationId, persistentStoreTwoName, taskId.namedTopology());
     private final String nonPersistentStoreTopicName =
-        ProcessorStateManager.storeChangelogTopic(applicationId, nonPersistentStoreName);
+        ProcessorStateManager.storeChangelogTopic(applicationId, nonPersistentStoreName, taskId.namedTopology());
     private final MockKeyValueStore persistentStore = new MockKeyValueStore(persistentStoreName, true);
     private final MockKeyValueStore persistentStoreTwo = new MockKeyValueStore(persistentStoreTwoName, true);
     private final MockKeyValueStore nonPersistentStore = new MockKeyValueStore(nonPersistentStoreName, false);
@@ -101,7 +102,6 @@ public class ProcessorStateManagerTest {
     private final TopicPartition persistentStoreTwoPartition = new TopicPartition(persistentStoreTwoTopicName, 1);
     private final TopicPartition nonPersistentStorePartition = new TopicPartition(nonPersistentStoreTopicName, 1);
     private final TopicPartition irrelevantPartition = new TopicPartition("other-topic", 1);
-    private final TaskId taskId = new TaskId(0, 1);
     private final Integer key = 1;
     private final String value = "the-value";
     private final byte[] keyBytes = new byte[] {0x0, 0x0, 0x0, 0x1};
@@ -155,7 +155,7 @@ public class ProcessorStateManagerTest {
         final String storeName = "store";
 
         assertThat(
-            ProcessorStateManager.storeChangelogTopic(applicationId, storeName),
+            ProcessorStateManager.storeChangelogTopic(applicationId, storeName, taskId.namedTopology()),
             is(applicationId + "-" + storeName + "-changelog")
         );
     }

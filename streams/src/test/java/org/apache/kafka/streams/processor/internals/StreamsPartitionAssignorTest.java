@@ -823,7 +823,7 @@ public class StreamsPartitionAssignorTest {
     private static Set<TaskId> tasksForState(final String storeName,
                                              final List<TaskId> tasks,
                                              final Map<Subtopology, InternalTopologyBuilder.TopicsInfo> topicGroups) {
-        final String changelogTopic = ProcessorStateManager.storeChangelogTopic(APPLICATION_ID, storeName);
+        final String changelogTopic = ProcessorStateManager.storeChangelogTopic(APPLICATION_ID, storeName, null);
 
         final Set<TaskId> ids = new HashSet<>();
         for (final Map.Entry<Subtopology, InternalTopologyBuilder.TopicsInfo> entry : topicGroups.entrySet()) {

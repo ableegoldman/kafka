@@ -49,9 +49,9 @@ public class NamedTopologyIntegrationTest {
     // TODO KAFKA-12648
     /**
      * Things to test in Pt. 2 -  Introduce TopologyMetadata to wrap InternalTopologyBuilders of named topologies:
-     * 1. Verify changelog & repartition topics decorated with named topology
+     * 1. Verify changelog & repartition topics decorated with named topology (see InternalTopicsIntegrationTest)
      * 2. Make sure a complex app run and works, ie one with
-     *         -multiple subtopologies
+     *         -multiple subtopologies with
      *         -persistent state
      *         -multi-partition input & output topics
      *         -standbys
@@ -82,7 +82,9 @@ public class NamedTopologyIntegrationTest {
     @Rule
     public final TestName testName = new TestName();
     private String appId;
-    private String inputStream;
+    private String inputStream1;
+    private String inputStream2;
+    private String inputStream3;
 
     final KafkaClientSupplier clientSupplier = new DefaultKafkaClientSupplier();
 
@@ -97,7 +99,6 @@ public class NamedTopologyIntegrationTest {
         final Properties streamsConfiguration = new Properties();
         streamsConfiguration.put(StreamsConfig.APPLICATION_ID_CONFIG, appId);
         streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, CLUSTER.bootstrapServers());
-        streamsConfiguration.put(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG, 0);
         streamsConfiguration.put(StreamsConfig.STATE_DIR_CONFIG, TestUtils.tempDirectory(appId).getPath());
         streamsConfiguration.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.Integer().getClass());
         streamsConfiguration.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.Integer().getClass());
@@ -109,26 +110,35 @@ public class NamedTopologyIntegrationTest {
     @Before
     public void setup() throws InterruptedException {
         appId = safeUniqueTestName(NamedTopologyIntegrationTest.class, testName);
-        inputStream = appId + "-input-stream";
+        inputStream1 = appId + "-input-stream-1";
+        inputStream2 = appId + "-input-stream-2";
+        inputStream3 = appId + "-input-stream-3";
         props = configProps();
-        CLUSTER.createTopic(inputStream, 2, 1);
+        CLUSTER.createTopic(inputStream1, 2, 1);
+        CLUSTER.createTopic(inputStream2, 2, 1);
+        CLUSTER.createTopic(inputStream3, 2, 1);
     }
 
     @After
-    public void shutdown() {
+    public void shutdown() throws Exception {
         if (streams != null) {
             streams.close(Duration.ofSeconds(30));
         }
+        CLUSTER.deleteTopics(inputStream1, inputStream2, inputStream3);
     }
 
     @Test
     public void shouldStartUpSingleNamedTopology() throws Exception {
+        builder1.stream(inputStream1);
         streams = new KafkaStreamsNamedTopologyWrapper(builder1.buildNamedTopology(props), props, clientSupplier);
         IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
     }
 
     @Test
-    public void shouldStartUpMultipleNamedTopologies() throws Exception {
+    public void shouldGetToRunningWithMultipleIdenticalNamedTopologies() throws Exception {
+        builder1.stream(inputStream1).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-1");
+        builder2.stream(inputStream2).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-2");
+        builder3.stream(inputStream3).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-3");
         streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(builder1, builder2, builder3), props, clientSupplier);
         IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
     }
@@ -141,7 +151,4 @@ public class NamedTopologyIntegrationTest {
         return topologies;
     }
 
-    private void buildComplexTopology(final NamedTopologyStreamsBuilder builder) {
-
-    }
 }
