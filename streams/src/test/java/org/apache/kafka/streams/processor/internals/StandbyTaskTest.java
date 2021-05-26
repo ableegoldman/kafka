@@ -138,7 +138,7 @@ public class StandbyTaskTest {
         ));
         baseDir = TestUtils.tempDirectory();
         config = createConfig(baseDir);
-        stateDirectory = new StateDirectory(config, new MockTime(), true);
+        stateDirectory = new StateDirectory(config, new MockTime(), true, true);
     }
 
     @After

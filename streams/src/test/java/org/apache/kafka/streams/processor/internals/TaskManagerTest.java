@@ -194,6 +194,8 @@ public class TaskManagerTest {
             processingMode
         );
         taskManager.setMainConsumer(consumer);
+        reset(topologyBuilder);
+        expect(topologyBuilder.hasNamedTopology()).andStubReturn(false);
     }
 
     @Test
@@ -202,8 +204,10 @@ public class TaskManagerTest {
         final Map<TaskId, Set<TopicPartition>> assignment = mkMap(mkEntry(taskId01, mkSet(t1p1, newTopicPartition)));
 
         expect(activeTaskCreator.createTasks(anyObject(), eq(assignment))).andStubReturn(emptyList());
+
         topologyBuilder.addSubscribedTopicsFromAssignment(eq(asList(t1p1, newTopicPartition)), anyString());
         expectLastCall();
+
         replay(activeTaskCreator, topologyBuilder);
 
         taskManager.handleAssignment(assignment, emptyMap());
