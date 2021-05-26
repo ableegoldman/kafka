@@ -1135,11 +1135,11 @@ public class KafkaStreamsTest {
             EasyMock.eq(topologyMetadata)
         ).andReturn(stateDirectory);
         EasyMock.expect(stateDirectory.initializeProcessId()).andReturn(UUID.randomUUID());
-        assertThat(topologyMetadata.hasPersistentStores(), equalTo(shouldFilesExist));
 
         PowerMock.replayAll();
 
         new KafkaStreams(topology, props, supplier, time);
+        assertThat(topologyMetadata.hasPersistentStores(), equalTo(shouldFilesExist));
 
         PowerMock.verifyAll();
     }

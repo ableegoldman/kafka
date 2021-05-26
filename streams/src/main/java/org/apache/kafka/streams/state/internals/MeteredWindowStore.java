@@ -81,9 +81,9 @@ public class MeteredWindowStore<K, V>
     public void init(final ProcessorContext context,
                      final StateStore root) {
         this.context = context instanceof InternalProcessorContext ? (InternalProcessorContext) context : null;
+        taskId = context.taskId();
         initStoreSerde(context);
         streamsMetrics = (StreamsMetricsImpl) context.metrics();
-        taskId = context.taskId();
 
         registerMetrics();
         final Sensor restoreSensor =
