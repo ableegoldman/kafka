@@ -183,8 +183,6 @@ public class TopologyMetadata {
             sb.append(b.describe().toString());
         });
 
-        // trim final newline character
-        sb.setLength(sb.length() - 1);
         return sb.toString();
     }
 

@@ -221,7 +221,7 @@ public class NamedTopologyTest {
                     + "      --> KSTREAM-SINK-0000000003\n"
                     + "      <-- KSTREAM-SOURCE-0000000001\n"
                     + "    Sink: KSTREAM-SINK-0000000003 (topic: output)\n"
-                    + "      <-- KSTREAM-FILTER-0000000002\n")
+                    + "      <-- KSTREAM-FILTER-0000000002\n\n")
         );
     }
 
@@ -283,7 +283,7 @@ public class NamedTopologyTest {
                     + "      --> KSTREAM-SINK-0000000003\n"
                     + "      <-- KSTREAM-SOURCE-0000000001\n"
                     + "    Sink: KSTREAM-SINK-0000000003 (topic: output-3)\n"
-                    + "      <-- KSTREAM-FILTER-0000000002\n")
+                    + "      <-- KSTREAM-FILTER-0000000002\n\n")
         );
     }
 
