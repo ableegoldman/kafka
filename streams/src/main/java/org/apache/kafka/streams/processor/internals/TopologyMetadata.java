@@ -200,6 +200,7 @@ public class TopologyMetadata {
 
             final int numNewInputTopics = inputTopics.size() + inputPatterns.size();
             allInputTopics.addAll(inputTopics);
+            allInputTopics.addAll(inputPatterns);
             if (allInputTopics.size() != numInputTopics + numNewInputTopics) {
                 inputTopics.retainAll(allInputTopics);
                 inputPatterns.retainAll(allInputTopics);
