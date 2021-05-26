@@ -20,9 +20,11 @@ import org.apache.kafka.streams.KafkaClientSupplier;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.TopologyException;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
+import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.processor.internals.namedtopology.KafkaStreamsNamedTopologyWrapper;
 import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopology;
 import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopologyStreamsBuilder;
+import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.test.TestUtils;
 
 import org.junit.After;
@@ -119,6 +121,19 @@ public class NamedTopologyTest {
     public void shouldThrowIllegalArgumentWhenLookingUpNonExistentTopologyByName() {
         streams = new KafkaStreamsNamedTopologyWrapper(builder1.buildNamedTopology(props), props, clientSupplier);
         assertThrows(IllegalArgumentException.class, () -> streams.getTopologyByName("non-existent-topology"));
+    }
+
+    @Test
+    public void shouldAllowSameStoreNameToBeUsedByMultipleNamedTopologies() {
+        builder1.stream("stream-1").selectKey((k, v) -> v).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store")));
+        builder2.stream("stream-2").selectKey((k, v) -> v).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store")));
+
+        streams = new KafkaStreamsNamedTopologyWrapper(asList(
+                    builder1.buildNamedTopology(props),
+                    builder2.buildNamedTopology(props)),
+                props,
+                clientSupplier
+        );
     }
 
     @Test

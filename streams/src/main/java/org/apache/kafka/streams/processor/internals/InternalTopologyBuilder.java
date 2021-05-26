@@ -126,7 +126,7 @@ public class InternalTopologyBuilder {
 
     private String applicationId = null;
 
-    private String sourceTopicPatternString = "";
+    private String sourceTopicPatternString = null;
 
     private List<String> sourceTopicCollection = null;
 
@@ -1078,7 +1078,7 @@ public class InternalTopologyBuilder {
         return Collections.unmodifiableMap(globalStateStores);
     }
 
-    public Set<String> allStateStoreName() {
+    public Set<String> allStateStoreNames() {
         Objects.requireNonNull(applicationId, "topology has not completed optimization");
 
         final Set<String> allNames = new HashSet<>(stateFactories.keySet());
@@ -1250,7 +1250,7 @@ public class InternalTopologyBuilder {
             latestResetPatterns.stream().anyMatch(p -> p.matcher(topic).matches())) {
             return LATEST;
         } else if (maybeDecorateInternalSourceTopics(sourceTopicNames).contains(topic)
-                || Pattern.compile(sourceTopicPatternString).matcher(topic).matches()
+                || (usesPatternSubscription() && Pattern.compile(sourceTopicPatternString).matcher(topic).matches())
                 || !hasNamedTopology()) {
             return NONE;
         } else {
@@ -1342,9 +1342,7 @@ public class InternalTopologyBuilder {
     void initializeSubscription() {
         if (usesPatternSubscription()) {
             log.debug("Found pattern subscribed source topics, initializing consumer's subscription pattern.");
-            final List<String> allSourceTopics = maybeDecorateInternalSourceTopics(sourceTopicNames);
-            Collections.sort(allSourceTopics);
-            sourceTopicPatternString = buildSourceTopicsPatternString(allSourceTopics, nodeToSourcePatterns.values());
+            sourceTopicPatternString = buildSourceTopicsPatternString();
         } else {
             log.debug("No source topics using pattern subscription found, initializing consumer's subscription collection.");
             sourceTopicCollection = maybeDecorateInternalSourceTopics(sourceTopicNames);
@@ -1352,14 +1350,17 @@ public class InternalTopologyBuilder {
         }
     }
 
-    private static String buildSourceTopicsPatternString(final List<String> allSourceTopics, final Collection<Pattern> sourcePatterns) {
+    private String buildSourceTopicsPatternString() {
+        final List<String> allSourceTopics = maybeDecorateInternalSourceTopics(sourceTopicNames);
+        Collections.sort(allSourceTopics);
+
         final StringBuilder builder = new StringBuilder();
 
         for (final String topic : allSourceTopics) {
             builder.append(topic).append("|");
         }
 
-        for (final Pattern sourcePattern : sourcePatterns) {
+        for (final Pattern sourcePattern : nodeToSourcePatterns.values()) {
             builder.append(sourcePattern.pattern()).append("|");
         }
 
@@ -1379,6 +1380,11 @@ public class InternalTopologyBuilder {
     }
 
     synchronized String sourceTopicsPatternString() {
+        // With a NamedTopology, it may be that this topology does not use pattern subscription but another one does
+        // in which case we would need to initialize the pattern string where we would otherwise have not
+        if (sourceTopicPatternString == null && hasNamedTopology()) {
+            sourceTopicPatternString = buildSourceTopicsPatternString();
+        }
         return sourceTopicPatternString;
     }
 
@@ -2081,11 +2087,17 @@ public class InternalTopologyBuilder {
         setRegexMatchedTopicToStateStore();
     }
 
+    /**
+     * @return a copy of all source topic names, including the application id and named topology prefix if applicable
+     */
     public synchronized List<String> fullSourceTopicNames() {
-        return maybeDecorateInternalSourceTopics(sourceTopicNames);
+        return new ArrayList<>(maybeDecorateInternalSourceTopics(sourceTopicNames));
     }
 
-    public List<String> allSourcePatternStrings() {
+    /**
+     * @return a copy of the string representation of any pattern subscribed source nodes
+     */
+    public synchronized List<String> allSourcePatternStrings() {
         return nodeToSourcePatterns.values().stream().map(Pattern::pattern).collect(Collectors.toList());
     }
 

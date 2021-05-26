@@ -22,10 +22,12 @@ import org.apache.kafka.streams.KafkaClientSupplier;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
+import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.processor.internals.DefaultKafkaClientSupplier;
 import org.apache.kafka.streams.processor.internals.namedtopology.KafkaStreamsNamedTopologyWrapper;
 import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopology;
 import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopologyStreamsBuilder;
+import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.test.TestUtils;
 
 import org.junit.After;
@@ -140,6 +142,15 @@ public class NamedTopologyIntegrationTest {
         builder1.stream(inputStream1).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-1");
         builder2.stream(inputStream2).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-2");
         builder3.stream(inputStream3).selectKey((k, v) -> v).groupByKey().count().toStream().to("output-3");
+        streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(builder1, builder2, builder3), props, clientSupplier);
+        IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
+    }
+
+    @Test
+    public void shouldWorkWithInMemoryStateStores() throws Exception {
+        builder1.stream(inputStream1).selectKey((k, v) -> v).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store-1"))).toStream().to("output-1");
+        builder2.stream(inputStream2).selectKey((k, v) -> v).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store-2"))).toStream().to("output-2");
+        builder3.stream(inputStream3).selectKey((k, v) -> v).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store-3"))).toStream().to("output-3");
         streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(builder1, builder2, builder3), props, clientSupplier);
         IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
     }

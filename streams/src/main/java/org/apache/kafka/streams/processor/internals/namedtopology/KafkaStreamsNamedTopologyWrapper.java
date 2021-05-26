@@ -35,7 +35,9 @@ import java.util.stream.Collectors;
  *
  * Status: basic architecture implemented but no actual upgrades are supported yet
  *
- * Note: global stores are not supported with NamedTopologies, nor will they be in the first iteration of this feature
+ * Note: some standard features of Kafka Streams are not yet supported with NamedTopologies. These include:
+ *       - global state stores
+ *       - interactive queries (IQ)
  */
 @Evolving
 public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
@@ -81,7 +83,7 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
         throw new UnsupportedOperationException();
     }
 
-    public void removeNamedTopology(final NamedTopology topology) {
+    public void removeNamedTopology(final String namedTopology) {
         throw new UnsupportedOperationException();
     }
 

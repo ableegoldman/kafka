@@ -878,7 +878,7 @@ public class TopologyTestDriver implements Closeable {
      */
     public Map<String, StateStore> getAllStateStores() {
         final Map<String, StateStore> allStores = new HashMap<>();
-        for (final String storeName : internalTopologyBuilder.allStateStoreName()) {
+        for (final String storeName : internalTopologyBuilder.allStateStoreNames()) {
             allStores.put(storeName, getStateStore(storeName, false));
         }
         return allStores;
