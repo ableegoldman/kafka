@@ -61,7 +61,7 @@ import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
 
 public class NamedTopologyIntegrationTest {
-    
+
     private static final int NUM_BROKERS = 1;
 
     public static final EmbeddedKafkaCluster CLUSTER = new EmbeddedKafkaCluster(NUM_BROKERS);

@@ -192,9 +192,8 @@ public class TopologyMetadata {
     }
 
     public final void rewriteAndBuildTopology(final StreamsConfig config) {
-        // As we go, check each topology for overlap in the set of input topics/patterns or state store names
+        // As we go, check each topology for overlap in the set of input topics/patterns
         final Set<String> allInputTopics = new HashSet<>();
-        final Set<String> allStoreNames = new HashSet<>();
 
         applyToEachBuilder(builder -> {
             builder.rewriteTopology(config);
