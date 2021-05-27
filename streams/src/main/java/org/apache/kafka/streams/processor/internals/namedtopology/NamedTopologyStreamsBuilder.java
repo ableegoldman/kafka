@@ -28,7 +28,8 @@ public class NamedTopologyStreamsBuilder extends StreamsBuilder {
     /**
      * @param topologyName              any string representing your NamedTopology, all characters allowed except for '_'
      * @throws IllegalArgumentException if the name contains the character '_'
-     * @throws TopologyException        if multiple NamedTopologies subscribe to the same input topics or patterns
+     * @throws TopologyException        if multiple NamedTopologies subscribe to the same input topics
+     *
      */
     public NamedTopologyStreamsBuilder(final String topologyName) {
         super();
