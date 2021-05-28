@@ -189,39 +189,18 @@ public class TopologyMetadata {
         return sb.toString();
     }
 
-    public final void buildAndRewriteTopology() {
-        applyToEachBuilder(builder -> {
-            builder.rewriteTopology(config);
-            builder.buildTopology();
+    public void registerAndBuildNewTopology(final InternalTopologyBuilder newTopologyBuilder) {
+        builders.put(newTopologyBuilder.namedTopology(), newTopologyBuilder);
+        buildAndVerifyTopology(newTopologyBuilder);
+    }
 
-            // As we go, check each topology for overlap in the set of input topics/patterns
-            final int numInputTopics = allInputTopics.size();
-            final List<String> inputTopics = builder.fullSourceTopicNames();
-            final Collection<String> inputPatterns = builder.allSourcePatternStrings();
+    public void unregisterTopology(final InternalTopologyBuilder removedTopology) {
+        log.info("Removing NamedTopology {}", removedTopology.namedTopology());
+        builders.remove(removedTopology.namedTopology());
+    }
 
-            final int numNewInputTopics = inputTopics.size() + inputPatterns.size();
-            allInputTopics.addAll(inputTopics);
-            allInputTopics.addAll(inputPatterns);
-            if (allInputTopics.size() != numInputTopics + numNewInputTopics) {
-                inputTopics.retainAll(allInputTopics);
-                inputPatterns.retainAll(allInputTopics);
-                inputTopics.addAll(inputPatterns);
-                log.error("Tried to add the NamedTopology {} but it had overlap with other input topics: {}", builder.namedTopology(), inputTopics);
-                throw new TopologyException("Named Topologies may not subscribe to the same input topics or patterns");
-            }
-
-            final ProcessorTopology globalTopology = builder.buildGlobalStateTopology();
-            if (globalTopology != null) {
-                if (builder.namedTopology() != null) {
-                    throw new IllegalStateException("Global state stores are not supported with Named Topologies");
-                } else if (this.globalTopology == null) {
-                    this.globalTopology = globalTopology;
-                } else {
-                    throw new IllegalStateException("Topology builder had global state, but global topology has already been set");
-                }
-            }
-            globalStateStores.putAll(builder.globalStateStores());
-        });
+    public void buildAndRewriteTopology() {
+        applyToEachBuilder(this::buildAndVerifyTopology);
     }
 
     public ProcessorTopology buildSubtopology(final TaskId task) {
@@ -284,6 +263,39 @@ public class TopologyMetadata {
         final List<Set<String>> copartitionGroups = new ArrayList<>();
         applyToEachBuilder(b -> copartitionGroups.addAll(b.copartitionGroups()));
         return copartitionGroups;
+    }
+
+    private void buildAndVerifyTopology(final InternalTopologyBuilder builder) {
+        builder.rewriteTopology(config);
+        builder.buildTopology();
+
+        // As we go, check each topology for overlap in the set of input topics/patterns
+        final int numInputTopics = allInputTopics.size();
+        final List<String> inputTopics = builder.fullSourceTopicNames();
+        final Collection<String> inputPatterns = builder.allSourcePatternStrings();
+
+        final int numNewInputTopics = inputTopics.size() + inputPatterns.size();
+        allInputTopics.addAll(inputTopics);
+        allInputTopics.addAll(inputPatterns);
+        if (allInputTopics.size() != numInputTopics + numNewInputTopics) {
+            inputTopics.retainAll(allInputTopics);
+            inputPatterns.retainAll(allInputTopics);
+            inputTopics.addAll(inputPatterns);
+            log.error("Tried to add the NamedTopology {} but it had overlap with other input topics: {}", builder.namedTopology(), inputTopics);
+            throw new TopologyException("Named Topologies may not subscribe to the same input topics or patterns");
+        }
+
+        final ProcessorTopology globalTopology = builder.buildGlobalStateTopology();
+        if (globalTopology != null) {
+            if (builder.namedTopology() != null) {
+                throw new IllegalStateException("Global state stores are not supported with Named Topologies");
+            } else if (this.globalTopology == null) {
+                this.globalTopology = globalTopology;
+            } else {
+                throw new IllegalStateException("Topology builder had global state, but global topology has already been set");
+            }
+        }
+        globalStateStores.putAll(builder.globalStateStores());
     }
 
     private InternalTopologyBuilder lookupBuilderForTask(final TaskId task) {

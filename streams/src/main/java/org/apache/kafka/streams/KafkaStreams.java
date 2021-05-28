@@ -334,7 +334,7 @@ public class KafkaStreams implements AutoCloseable {
         return state;
     }
 
-    private boolean isRunningOrRebalancing() {
+    protected boolean isRunningOrRebalancing() {
         synchronized (stateLock) {
             return state.isRunningOrRebalancing();
         }
@@ -859,7 +859,7 @@ public class KafkaStreams implements AutoCloseable {
         ClientMetrics.addVersionMetric(streamsMetrics);
         ClientMetrics.addCommitIdMetric(streamsMetrics);
         ClientMetrics.addApplicationIdMetric(streamsMetrics, config.getString(StreamsConfig.APPLICATION_ID_CONFIG));
-        ClientMetrics.addTopologyDescriptionMetric(streamsMetrics, this.topologyMetadata.topologyDescription());
+        ClientMetrics.addTopologyDescriptionMetric(streamsMetrics, (metricsConfig, now) -> this.topologyMetadata.topologyDescription());
         ClientMetrics.addStateMetric(streamsMetrics, (metricsConfig, now) -> state);
         ClientMetrics.addNumAliveStreamThreadMetric(streamsMetrics, (metricsConfig, now) -> getNumLiveStreamThreads());
 
@@ -1539,7 +1539,7 @@ public class KafkaStreams implements AutoCloseable {
      * threads lock when looping threads.
      * @param consumer handler
      */
-    private void processStreamThread(final Consumer<StreamThread> consumer) {
+    protected void processStreamThread(final Consumer<StreamThread> consumer) {
         final List<StreamThread> copy = new ArrayList<>(threads);
         for (final StreamThread thread : copy) consumer.accept(thread);
     }

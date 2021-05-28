@@ -59,7 +59,7 @@ import static org.junit.Assert.assertThrows;
 @RunWith(PowerMockRunner.class)
 @PrepareForTest({Cluster.class})
 public class RepartitionTopicsTest {
-
+    
     private static final String SOURCE_TOPIC_NAME1 = "source1";
     private static final String SOURCE_TOPIC_NAME2 = "source2";
     private static final String SOURCE_TOPIC_NAME3 = "source3";
@@ -94,7 +94,6 @@ public class RepartitionTopicsTest {
         Collections.emptyMap()
     );
     final  StreamsConfig config = new DummyStreamsConfig();
-
     final InternalTopologyBuilder internalTopologyBuilder = mock(InternalTopologyBuilder.class);
     final InternalTopicManager internalTopicManager = mock(InternalTopicManager.class);
     final CopartitionedTopicsEnforcer copartitionedTopicsEnforcer = mock(CopartitionedTopicsEnforcer.class);
