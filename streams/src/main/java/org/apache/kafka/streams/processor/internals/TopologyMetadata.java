@@ -32,17 +32,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.SortedMap;
-import java.util.TreeMap;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-// TODO KAFKA-12648:
-//  1) synchronize on these methods instead of individual InternalTopologyBuilder methods, where applicable
 
 public class TopologyMetadata {
     private final Logger log = LoggerFactory.getLogger(TopologyMetadata.class);
@@ -53,15 +50,15 @@ public class TopologyMetadata {
     private static final Pattern EMPTY_ZERO_LENGTH_PATTERN = Pattern.compile("");
 
     private final StreamsConfig config;
-    private final SortedMap<String, InternalTopologyBuilder> builders; // Keep sorted by topology name for readability
+    private final ConcurrentNavigableMap<String, InternalTopologyBuilder> builders; // Keep sorted by topology name for readability
 
     private ProcessorTopology globalTopology;
-    private Map<String, StateStore> globalStateStores = new HashMap<>();
-    final Set<String> allInputTopics = new HashSet<>();
+    private final Map<String, StateStore> globalStateStores = new HashMap<>();
+    private final Set<String> allInputTopics = new HashSet<>();
 
     public TopologyMetadata(final InternalTopologyBuilder builder, final StreamsConfig config) {
         this.config = config;
-        builders = new TreeMap<>();
+        builders = new ConcurrentSkipListMap<>();
         if (builder.hasNamedTopology()) {
             builders.put(builder.topologyName(), builder);
         } else {
@@ -69,11 +66,11 @@ public class TopologyMetadata {
         }
     }
 
-    public TopologyMetadata(final SortedMap<String, InternalTopologyBuilder> builders, final StreamsConfig config) {
+    public TopologyMetadata(final ConcurrentNavigableMap<String, InternalTopologyBuilder> builders, final StreamsConfig config) {
         this.config = config;
         this.builders = builders;
         if (builders.isEmpty()) {
-            log.debug("Building KafkaStreams app with no empty topology");
+            log.debug("Building KafkaStreams app with no topology");
         }
     }
 
@@ -83,7 +80,8 @@ public class TopologyMetadata {
         // If the application uses named topologies, it's possible to start up with no topologies at all and only add them later
         if (builders.isEmpty()) {
             if (configuredNumStreamThreads != 0) {
-                log.info("Overriding number of StreamThreads to zero for empty topology");
+                log.info("Overriding number of StreamThreads to zero for empty topology, "
+                             + "a thread will be added when the first NamedTopology is.");
             }
             return 0;
         }
@@ -116,6 +114,13 @@ public class TopologyMetadata {
     public boolean hasNamedTopologies() {
         // This includes the case of starting up with no named topologies at all
         return !builders.containsKey(UNNAMED_TOPOLOGY);
+    }
+
+    public synchronized boolean isACurrentNamedTopologyOrElseHasNone(final String topologyName) {
+        if (topologyName == null) {
+            return true;
+        }
+        return builders.containsKey(topologyName);
     }
 
     public boolean hasGlobalTopology() {
@@ -199,39 +204,50 @@ public class TopologyMetadata {
         return sb.toString();
     }
 
-    public final void buildAndRewriteTopology() {
-        applyToEachBuilder(builder -> {
-            builder.rewriteTopology(config);
-            builder.buildTopology();
+    public void registerAndBuildNewTopology(final InternalTopologyBuilder newTopologyBuilder) {
+        builders.put(newTopologyBuilder.topologyName(), newTopologyBuilder);
+        buildAndVerifyTopology(newTopologyBuilder);
+    }
 
-            // As we go, check each topology for overlap in the set of input topics/patterns
-            final int numInputTopics = allInputTopics.size();
-            final List<String> inputTopics = builder.fullSourceTopicNames();
-            final Collection<String> inputPatterns = builder.allSourcePatternStrings();
+    public void unregisterTopology(final String topologyName) {
+        log.info("Removing NamedTopology {}", topologyName);
+        builders.remove(topologyName);
+    }
 
-            final int numNewInputTopics = inputTopics.size() + inputPatterns.size();
-            allInputTopics.addAll(inputTopics);
-            allInputTopics.addAll(inputPatterns);
-            if (allInputTopics.size() != numInputTopics + numNewInputTopics) {
-                inputTopics.retainAll(allInputTopics);
-                inputPatterns.retainAll(allInputTopics);
-                inputTopics.addAll(inputPatterns);
-                log.error("Tried to add the NamedTopology {} but it had overlap with other input topics: {}", builder.topologyName(), inputTopics);
-                throw new TopologyException("Named Topologies may not subscribe to the same input topics or patterns");
+    public void buildAndRewriteTopology() {
+        applyToEachBuilder(this::buildAndVerifyTopology);
+    }
+    private void buildAndVerifyTopology(final InternalTopologyBuilder builder) {
+        builder.rewriteTopology(config);
+        builder.buildTopology();
+
+        // As we go, check each topology for overlap in the set of input topics/patterns
+        final int numInputTopics = allInputTopics.size();
+        final List<String> inputTopics = builder.fullSourceTopicNames();
+        final Collection<String> inputPatterns = builder.allSourcePatternStrings();
+
+        final int numNewInputTopics = inputTopics.size() + inputPatterns.size();
+        allInputTopics.addAll(inputTopics);
+        allInputTopics.addAll(inputPatterns);
+        if (allInputTopics.size() != numInputTopics + numNewInputTopics) {
+            inputTopics.retainAll(allInputTopics);
+            inputPatterns.retainAll(allInputTopics);
+            inputTopics.addAll(inputPatterns);
+            log.error("Tried to add the NamedTopology {} but it had overlap with other input topics: {}", builder.topologyName(), inputTopics);
+            throw new TopologyException("Named Topologies may not subscribe to the same input topics or patterns");
+        }
+
+        final ProcessorTopology globalTopology = builder.buildGlobalStateTopology();
+        if (globalTopology != null) {
+            if (builder.topologyName() != null) {
+                throw new IllegalStateException("Global state stores are not supported with Named Topologies");
+            } else if (this.globalTopology == null) {
+                this.globalTopology = globalTopology;
+            } else {
+                throw new IllegalStateException("Topology builder had global state, but global topology has already been set");
             }
-
-            final ProcessorTopology globalTopology = builder.buildGlobalStateTopology();
-            if (globalTopology != null) {
-                if (builder.topologyName() != null) {
-                    throw new IllegalStateException("Global state stores are not supported with Named Topologies");
-                } else if (this.globalTopology == null) {
-                    this.globalTopology = globalTopology;
-                } else {
-                    throw new IllegalStateException("Topology builder had global state, but global topology has already been set");
-                }
-            }
-            globalStateStores.putAll(builder.globalStateStores());
-        });
+        }
+        globalStateStores.putAll(builder.globalStateStores());
     }
 
     public ProcessorTopology buildSubtopology(final TaskId task) {
