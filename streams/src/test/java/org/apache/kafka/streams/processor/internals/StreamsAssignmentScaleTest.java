@@ -162,7 +162,6 @@ public class StreamsAssignmentScaleTest {
         final Map<String, Object> configMap = new HashMap<>();
         configMap.put(StreamsConfig.APPLICATION_ID_CONFIG, APPLICATION_ID);
         configMap.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:8080");
-
         final InternalTopologyBuilder builder = new InternalTopologyBuilder();
         builder.addSource(null, "source", null, null, null, "topic");
         builder.addProcessor("processor", new MockApiProcessorSupplier<>(), "source");
