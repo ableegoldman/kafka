@@ -116,8 +116,7 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
         topologyMetadata.registerAndBuildNewTopology(newTopology.internalTopologyBuilder());
 
         processStreamThread(StreamThread::topologyUpdated);
-        // TODO make sure assignor only distributes known tasks
-        throw new UnsupportedOperationException();
+        // TODO KAFKA-12648: make sure assignor only distributes known tasks
     }
 
     /**
@@ -138,7 +137,7 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
         topologyMetadata.unregisterTopology(removedTopology.internalTopologyBuilder());
 
         processStreamThread(StreamThread::topologyUpdated);
-        // TODO make sure assignor only distributes known tasks
+        // TODO KAFKA-12648: make sure assignor only distributes known tasks
         throw new UnsupportedOperationException("Not fully implemented yet");
     }
 
