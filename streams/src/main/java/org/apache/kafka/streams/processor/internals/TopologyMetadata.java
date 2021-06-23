@@ -47,7 +47,8 @@ import org.slf4j.LoggerFactory;
 public class TopologyMetadata {
     private final Logger log = LoggerFactory.getLogger(TopologyMetadata.class);
 
-    // the '_' character is not allowed for topology names, thus it's safe to use to indicate that it's not a named topology
+    // the "__" (double underscore) string is not allowed for topology names, so it's safe to use to indicate
+    // that it's not a named topology
     private static final String UNNAMED_TOPOLOGY = "__UNNAMED_TOPOLOGY__";
     private static final Pattern EMPTY_ZERO_LENGTH_PATTERN = Pattern.compile("");
 
@@ -72,7 +73,7 @@ public class TopologyMetadata {
         this.config = config;
         this.builders = builders;
         if (builders.isEmpty()) {
-            log.debug("Building KafkaStreams app with no empty topology");
+            log.debug("Building KafkaStreams app with no topology");
         }
     }
 
