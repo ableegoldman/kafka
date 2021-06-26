@@ -112,6 +112,11 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
         if (!isRunningOrRebalancing()) {
             throw new IllegalStateException("Cannot add a NamedTopology while the state is " + super.state);
         }
+
+        // If there are no topologies yet, there are no StreamThreads, so we must add one
+        if (nameToTopology.isEmpty())  {
+            addStreamThread();
+        }
         nameToTopology.put(newTopology.name(), newTopology);
         topologyMetadata.registerAndBuildNewTopology(newTopology.internalTopologyBuilder());
 
@@ -137,7 +142,10 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
         topologyMetadata.unregisterTopology(removedTopology.internalTopologyBuilder());
 
         processStreamThread(StreamThread::topologyUpdated);
-        // TODO KAFKA-12648: make sure assignor only distributes known tasks
+        // TODO KAFKA-12648:
+        //  1) make sure assignor only distributes known tasks
+        //  2) remove all StreamThreads if this is the last NamedTopology
+
         throw new UnsupportedOperationException("Not fully implemented yet");
     }
 

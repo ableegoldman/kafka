@@ -83,7 +83,8 @@ public class TopologyMetadata {
         // If the application uses named topologies, it's possible to start up with no topologies at all and only add them later
         if (builders.isEmpty()) {
             if (configuredNumStreamThreads != 0) {
-                log.info("Overriding number of StreamThreads to zero for empty topology");
+                log.info("Overriding number of StreamThreads to zero for empty topology, "
+                             + "a thread will be added when the first NamedTopology is.");
             }
             return 0;
         }
