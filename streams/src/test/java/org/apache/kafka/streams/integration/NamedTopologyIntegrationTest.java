@@ -62,7 +62,9 @@ import static java.util.Collections.singletonList;
 
 public class NamedTopologyIntegrationTest {
     
-    // TODO -- test using multiple clients with standbys
+    // TODO KAFKA-12648:
+    //  1) test using multiple clients with standbys
+    //  2) full test coverage for add/removeNamedTopology covering the 0 thread case
 
     private static final int NUM_BROKERS = 1;
 
@@ -232,7 +234,22 @@ public class NamedTopologyIntegrationTest {
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream1, 3), equalTo(standardOutputData));
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream2, 3), equalTo(standardOutputData));
     }
-    
+
+    @Test
+    public void shouldRemoveOneNamedTopologyWhileAnotherContinuesProcessing() throws Exception {
+        builder1.stream(inputStream1).selectKey((k, v) -> k).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store"))).toStream().to(outputStream1);
+        builder2.stream(inputStream2).selectKey((k, v) -> k).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store"))).toStream().to(outputStream2);
+        streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(builder1, builder2), props, clientSupplier);
+        IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
+
+        streams.removeNamedTopology("topology-1");
+
+        produceToInputTopics(inputStream1, standardInputData);
+        produceToInputTopics(inputStream2, standardInputData);
+
+        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream2, 3), equalTo(standardOutputData));
+    }
+
     @Test
     public void shouldAddNamedTopologyToRunningApplicationWithMultipleInitialNamedTopologies() throws Exception {
         produceToInputTopics(inputStream1, standardInputData);

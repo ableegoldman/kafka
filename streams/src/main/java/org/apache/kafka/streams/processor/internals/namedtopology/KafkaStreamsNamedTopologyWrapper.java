@@ -115,6 +115,7 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
 
         // If there are no topologies yet, there are no StreamThreads, so we must add one
         if (nameToTopology.isEmpty())  {
+            // TODO KAFKA-12648: use a CV to wait/notify existing threads instead of adding/removing them
             addStreamThread();
         }
         nameToTopology.put(newTopology.name(), newTopology);
@@ -136,17 +137,20 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
     public void removeNamedTopology(final String topologyToRemove) {
         if (!isRunningOrRebalancing()) {
             throw new IllegalStateException("Cannot remove a NamedTopology while the state is " + super.state);
+        } else if (!nameToTopology.containsKey(topologyToRemove)) {
+            throw new IllegalArgumentException("Unable to locate a NamedTopology called " + topologyToRemove);
         }
-        final NamedTopology removedTopology = getTopologyByName(topologyToRemove);
+
         nameToTopology.remove(topologyToRemove);
-        topologyMetadata.unregisterTopology(removedTopology.internalTopologyBuilder());
+        topologyMetadata.unregisterTopology(topologyToRemove);
 
         processStreamThread(StreamThread::topologyUpdated);
-        // TODO KAFKA-12648:
-        //  1) make sure assignor only distributes known tasks
-        //  2) remove all StreamThreads if this is the last NamedTopology
 
-        throw new UnsupportedOperationException("Not fully implemented yet");
+        if (nameToTopology.isEmpty()) {
+            // TODO KAFKA-12648: use a CV to wait/notify existing threads instead of adding/removing them
+            processStreamThread(thread -> removeStreamThread());
+        }
+        // TODO KAFKA-12648: make sure assignor only distributes known tasks
     }
 
     public String getFullTopologyDescription() {

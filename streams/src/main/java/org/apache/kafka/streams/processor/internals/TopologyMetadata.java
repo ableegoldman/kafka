@@ -110,6 +110,13 @@ public class TopologyMetadata {
         return !builders.containsKey(UNNAMED_TOPOLOGY);
     }
 
+    public synchronized boolean isACurrentNamedTopologyOrElseHasNone(final String topologyName) {
+        if (topologyName == null) {
+            return true;
+        }
+        return builders.containsKey(topologyName);
+    }
+
     public boolean hasGlobalTopology() {
         return evaluateConditionIsTrueForAnyBuilders(InternalTopologyBuilder::hasGlobalStores);
     }
@@ -196,9 +203,9 @@ public class TopologyMetadata {
         buildAndVerifyTopology(newTopologyBuilder);
     }
 
-    public void unregisterTopology(final InternalTopologyBuilder removedTopology) {
-        log.info("Removing NamedTopology {}", removedTopology.namedTopology());
-        builders.remove(removedTopology.namedTopology());
+    public void unregisterTopology(final String topologyName) {
+        log.info("Removing NamedTopology {}", topologyName);
+        builders.remove(topologyName);
     }
 
     public void buildAndRewriteTopology() {
