@@ -27,14 +27,18 @@ import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
+import org.apache.kafka.streams.kstream.Consumed;
+import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.processor.internals.DefaultKafkaClientSupplier;
 import org.apache.kafka.streams.processor.internals.namedtopology.KafkaStreamsNamedTopologyWrapper;
 import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopology;
 import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopologyStreamsBuilder;
 import org.apache.kafka.streams.state.Stores;
+import org.apache.kafka.streams.utils.UniqueTopicSerdeScope;
 import org.apache.kafka.test.TestUtils;
 
+import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -50,7 +54,12 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
+import static org.apache.kafka.common.utils.Utils.mkEntry;
+import static org.apache.kafka.common.utils.Utils.mkMap;
+import static org.apache.kafka.common.utils.Utils.mkProperties;
+import static org.apache.kafka.common.utils.Utils.mkSet;
 import static org.apache.kafka.streams.integration.utils.IntegrationTestUtils.safeUniqueTestName;
 import static org.apache.kafka.streams.integration.utils.IntegrationTestUtils.waitUntilMinKeyValueRecordsReceived;
 
@@ -301,6 +310,53 @@ public class NamedTopologyIntegrationTest {
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream1, 3), equalTo(standardOutputData));
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream2, 3), equalTo(standardOutputData));
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream3, 3), equalTo(standardOutputData));
+    }
+
+    @Test
+    public void shouldPrefixAllInternalTopicNamesWithNamedTopology() throws Exception {
+        final String topologyName_agg = "agg-topology";
+        final String topologyName_FKJ = "FKJ-topology";
+
+        final NamedTopologyStreamsBuilder builder_agg = new NamedTopologyStreamsBuilder(topologyName_agg);
+        builder_agg.stream(inputStream1).selectKey((k, v) -> k).groupByKey().count();
+
+        final NamedTopologyStreamsBuilder builder_FKJ = new NamedTopologyStreamsBuilder(topologyName_FKJ);
+
+        final UniqueTopicSerdeScope serdeScope = new UniqueTopicSerdeScope();
+        final KTable<Integer, String> left = builder_FKJ.table(
+            inputStream2,
+            Consumed.with(serdeScope.decorateSerde(Serdes.Integer(), props, true),
+                          serdeScope.decorateSerde(Serdes.String(), props, false))
+        );
+        final KTable<Integer, String> right = builder_FKJ.table(
+            inputStream3,
+            Consumed.with(serdeScope.decorateSerde(Serdes.Integer(), props, true),
+                          serdeScope.decorateSerde(Serdes.String(), props, false))
+        );
+        left.join(
+            right,
+            value -> Integer.parseInt(value.split("\\|")[1]),
+            (value1, value2) -> "(" + value1 + "," + value2 + ")",
+            Materialized.with(null, serdeScope.decorateSerde(Serdes.String(), props, false)));
+
+
+        streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(builder_FKJ, builder_agg), props, clientSupplier);
+        IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
+
+        final String topicPrefix_agg = appId + "-" + topologyName_agg;
+        final String topicPrefix_FKJ = appId + "-" + topologyName_FKJ;
+        final  Set<String> internalTopics  = CLUSTER.getAllTopicsInCluster().stream().filter(t ->
+            t.endsWith("-repartition") || t.endsWith("-changelog") || t.endsWith("-topic"))
+            .collect(Collectors.toSet());
+        assertThat(internalTopics, is(mkSet(
+            topicPrefix_agg + "-KSTREAM-AGGREGATE-STATE-STORE-0000000002-repartition",
+            topicPrefix_agg + "-KSTREAM-AGGREGATE-STATE-STORE-0000000002-changelog",
+            topicPrefix_FKJ + "-KTABLE-FK-JOIN-SUBSCRIPTION-REGISTRATION-0000000006-topic",
+            topicPrefix_FKJ + "-KTABLE-FK-JOIN-SUBSCRIPTION-RESPONSE-0000000014-topic",
+            topicPrefix_FKJ + "-KTABLE-FK-JOIN-SUBSCRIPTION-STATE-STORE-0000000010-changelog",
+            topicPrefix_FKJ + "-" + inputStream2 + "-STATE-STORE-0000000000-changelog",
+            topicPrefix_FKJ + "-" + inputStream3 + "-STATE-STORE-0000000003-changelog"))
+        );
     }
 
     private void produceToInputTopics(final String topic, final Collection<KeyValue<String, Long>> records) {
