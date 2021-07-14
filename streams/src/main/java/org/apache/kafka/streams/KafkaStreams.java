@@ -811,10 +811,10 @@ public class KafkaStreams implements AutoCloseable {
         this(topologyMetadata, config, clientSupplier, Time.SYSTEM);
     }
 
-    protected KafkaStreams(final TopologyMetadata topologyMetadata,
-                           final StreamsConfig config,
-                           final KafkaClientSupplier clientSupplier,
-                           final Time time) throws StreamsException {
+    private KafkaStreams(final TopologyMetadata topologyMetadata,
+                         final StreamsConfig config,
+                         final KafkaClientSupplier clientSupplier,
+                         final Time time) throws StreamsException {
         this.config = config;
         this.time = time;
 
