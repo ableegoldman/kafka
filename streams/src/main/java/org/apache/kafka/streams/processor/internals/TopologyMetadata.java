@@ -56,14 +56,14 @@ public class TopologyMetadata {
     private final SortedMap<String, InternalTopologyBuilder> builders; // Keep sorted by topology name for readability
 
     private ProcessorTopology globalTopology;
-    private Map<String, StateStore> globalStateStores = new HashMap<>();
-    final Set<String> allInputTopics = new HashSet<>();
+    private final Map<String, StateStore> globalStateStores = new HashMap<>();
+    private final Set<String> allInputTopics = new HashSet<>();
 
     public TopologyMetadata(final InternalTopologyBuilder builder, final StreamsConfig config) {
         this.config = config;
         builders = new TreeMap<>();
         if (builder.hasNamedTopology()) {
-            builders.put(builder.namedTopology(), builder);
+            builders.put(builder.topologyName(), builder);
         } else {
             builders.put(UNNAMED_TOPOLOGY, builder);
         }
@@ -89,11 +89,20 @@ public class TopologyMetadata {
             return 0;
         }
 
-        // If there are topologies but they are all empty, this indicates a bug in user code
-        if (hasNoNonGlobalTopology() && !hasGlobalTopology()) {
-            log.error("Topology with no input topics will create no stream threads and no global thread.");
-            throw new TopologyException("Topology has no stream threads and no global threads, " +
-                                            "must subscribe to at least one source topic or global table.");
+        // If there are named topologies but some are empty, this indicates a bug in user code
+        if (hasNamedTopologies()) {
+            if (hasNoNonGlobalTopology() && !hasGlobalTopology()) {
+                log.error("Detected a named topology with no input topics, a named topology may not be empty.");
+                throw new TopologyException("Topology has no stream threads and no global threads, " +
+                                                "must subscribe to at least one source topic or pattern.");
+            }
+        } else {
+            // If both the global and non-global topologies are empty, this indicates a bug in user code
+            if (hasNoNonGlobalTopology() && !hasGlobalTopology()) {
+                log.error("Topology with no input topics will create no stream threads and no global thread.");
+                throw new TopologyException("Topology has no stream threads and no global threads, " +
+                                                "must subscribe to at least one source topic or global table.");
+            }
         }
 
         // Lastly we check for an empty non-global topology and override the threads to zero if set otherwise
@@ -185,7 +194,7 @@ public class TopologyMetadata {
         return builders.isEmpty();
     }
 
-    public String topologyDescription() {
+    public String topologyDescriptionString() {
         if (isEmpty()) {
             return "";
         }
@@ -199,7 +208,7 @@ public class TopologyMetadata {
     }
 
     public void registerAndBuildNewTopology(final InternalTopologyBuilder newTopologyBuilder) {
-        builders.put(newTopologyBuilder.namedTopology(), newTopologyBuilder);
+        builders.put(newTopologyBuilder.topologyName(), newTopologyBuilder);
         buildAndVerifyTopology(newTopologyBuilder);
     }
 
@@ -210,6 +219,38 @@ public class TopologyMetadata {
 
     public void buildAndRewriteTopology() {
         applyToEachBuilder(this::buildAndVerifyTopology);
+    }
+    private void buildAndVerifyTopology(final InternalTopologyBuilder builder) {
+        builder.rewriteTopology(config);
+        builder.buildTopology();
+
+        // As we go, check each topology for overlap in the set of input topics/patterns
+        final int numInputTopics = allInputTopics.size();
+        final List<String> inputTopics = builder.fullSourceTopicNames();
+        final Collection<String> inputPatterns = builder.allSourcePatternStrings();
+
+        final int numNewInputTopics = inputTopics.size() + inputPatterns.size();
+        allInputTopics.addAll(inputTopics);
+        allInputTopics.addAll(inputPatterns);
+        if (allInputTopics.size() != numInputTopics + numNewInputTopics) {
+            inputTopics.retainAll(allInputTopics);
+            inputPatterns.retainAll(allInputTopics);
+            inputTopics.addAll(inputPatterns);
+            log.error("Tried to add the NamedTopology {} but it had overlap with other input topics: {}", builder.topologyName(), inputTopics);
+            throw new TopologyException("Named Topologies may not subscribe to the same input topics or patterns");
+        }
+
+        final ProcessorTopology globalTopology = builder.buildGlobalStateTopology();
+        if (globalTopology != null) {
+            if (builder.topologyName() != null) {
+                throw new IllegalStateException("Global state stores are not supported with Named Topologies");
+            } else if (this.globalTopology == null) {
+                this.globalTopology = globalTopology;
+            } else {
+                throw new IllegalStateException("Topology builder had global state, but global topology has already been set");
+            }
+        }
+        globalStateStores.putAll(builder.globalStateStores());
     }
 
     public ProcessorTopology buildSubtopology(final TaskId task) {
@@ -272,39 +313,6 @@ public class TopologyMetadata {
         final List<Set<String>> copartitionGroups = new ArrayList<>();
         applyToEachBuilder(b -> copartitionGroups.addAll(b.copartitionGroups()));
         return copartitionGroups;
-    }
-
-    private void buildAndVerifyTopology(final InternalTopologyBuilder builder) {
-        builder.rewriteTopology(config);
-        builder.buildTopology();
-
-        // As we go, check each topology for overlap in the set of input topics/patterns
-        final int numInputTopics = allInputTopics.size();
-        final List<String> inputTopics = builder.fullSourceTopicNames();
-        final Collection<String> inputPatterns = builder.allSourcePatternStrings();
-
-        final int numNewInputTopics = inputTopics.size() + inputPatterns.size();
-        allInputTopics.addAll(inputTopics);
-        allInputTopics.addAll(inputPatterns);
-        if (allInputTopics.size() != numInputTopics + numNewInputTopics) {
-            inputTopics.retainAll(allInputTopics);
-            inputPatterns.retainAll(allInputTopics);
-            inputTopics.addAll(inputPatterns);
-            log.error("Tried to add the NamedTopology {} but it had overlap with other input topics: {}", builder.namedTopology(), inputTopics);
-            throw new TopologyException("Named Topologies may not subscribe to the same input topics or patterns");
-        }
-
-        final ProcessorTopology globalTopology = builder.buildGlobalStateTopology();
-        if (globalTopology != null) {
-            if (builder.namedTopology() != null) {
-                throw new IllegalStateException("Global state stores are not supported with Named Topologies");
-            } else if (this.globalTopology == null) {
-                this.globalTopology = globalTopology;
-            } else {
-                throw new IllegalStateException("Topology builder had global state, but global topology has already been set");
-            }
-        }
-        globalStateStores.putAll(builder.globalStateStores());
     }
 
     private InternalTopologyBuilder lookupBuilderForTask(final TaskId task) {
