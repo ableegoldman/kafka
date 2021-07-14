@@ -26,14 +26,22 @@ import org.apache.kafka.streams.TestInputTopic;
 import org.apache.kafka.streams.TestOutputTopic;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.TopologyTestDriver;
+import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
+import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
 import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.ValueJoiner;
+import org.apache.kafka.streams.processor.internals.DefaultKafkaClientSupplier;
+import org.apache.kafka.streams.processor.internals.namedtopology.KafkaStreamsNamedTopologyWrapper;
+import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopology;
+import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopologyStreamsBuilder;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.utils.UniqueTopicSerdeScope;
 import org.apache.kafka.test.TestUtils;
+
+import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -41,6 +49,7 @@ import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -48,12 +57,18 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static java.util.Collections.emptyMap;
+import static java.util.Collections.singletonList;
+
 import static org.apache.kafka.common.utils.Utils.mkEntry;
 import static org.apache.kafka.common.utils.Utils.mkMap;
 import static org.apache.kafka.common.utils.Utils.mkProperties;
+import static org.apache.kafka.common.utils.Utils.mkSet;
+
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
@@ -616,6 +631,70 @@ public class KTableKTableForeignKeyJoinIntegrationTest {
                 }
             }
         }
+    }
+
+    @Test
+    public void shouldPrefixInternalFKJTopicNamesWithNamedTopology() throws Exception {
+        final EmbeddedKafkaCluster cluster = setupCluster();
+
+        final String applicationId = "my-app";
+        final String topologyName = "FKJ-topology";
+        final Properties streamsConfig = mkProperties(mkMap(
+            mkEntry(StreamsConfig.APPLICATION_ID_CONFIG, applicationId),
+            mkEntry(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapServers()),
+            mkEntry(StreamsConfig.STATE_DIR_CONFIG, TestUtils.tempDirectory().getPath())
+        ));
+
+        final UniqueTopicSerdeScope serdeScope = new UniqueTopicSerdeScope();
+        final NamedTopologyStreamsBuilder builder = new NamedTopologyStreamsBuilder(topologyName);
+
+        final KTable<Integer, String> left = builder.table(
+            LEFT_TABLE,
+            Consumed.with(serdeScope.decorateSerde(Serdes.Integer(), streamsConfig, true),
+                          serdeScope.decorateSerde(Serdes.String(), streamsConfig, false))
+        );
+        final KTable<Integer, String> right = builder.table(
+            RIGHT_TABLE,
+            Consumed.with(serdeScope.decorateSerde(Serdes.Integer(), streamsConfig, true),
+                          serdeScope.decorateSerde(Serdes.String(), streamsConfig, false))
+        );
+
+        left.join(
+            right,
+            value -> Integer.parseInt(value.split("\\|")[1]),
+            (value1, value2) -> "(" + value1 + "," + value2 + ")",
+            Materialized.with(null, serdeScope.decorateSerde(Serdes.String(), streamsConfig, false)
+            ))
+            .toStream()
+            .to(OUTPUT);
+
+        final NamedTopology topology = builder.buildNamedTopology(streamsConfig);
+
+        try (final KafkaStreamsNamedTopologyWrapper streams = new KafkaStreamsNamedTopologyWrapper(topology, streamsConfig, new DefaultKafkaClientSupplier())) {
+            IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
+
+            final String topicPrefix = applicationId + "-" + topologyName;
+            final Set<String> internalTopics = cluster.getAllTopicsInCluster().stream().filter(
+                // filter out user topics and cluster internal topics
+                t -> !t.equals(LEFT_TABLE) && !t.equals(RIGHT_TABLE) && !t.equals(OUTPUT) && !t.startsWith("__"))
+                .collect(Collectors.toSet());
+            assertThat(internalTopics, Matchers.is(mkSet(
+                topicPrefix + "-KTABLE-FK-JOIN-SUBSCRIPTION-REGISTRATION-0000000006-topic",
+                topicPrefix + "-KTABLE-FK-JOIN-SUBSCRIPTION-RESPONSE-0000000014-topic",
+                topicPrefix + "-KTABLE-FK-JOIN-SUBSCRIPTION-STATE-STORE-0000000010-changelog",
+                topicPrefix + "-left_table-STATE-STORE-0000000000-changelog",
+                topicPrefix + "-right_table-STATE-STORE-0000000003-changelog"
+            )));
+        }
+    }
+
+    private EmbeddedKafkaCluster setupCluster() throws Exception {
+        final EmbeddedKafkaCluster cluster = new EmbeddedKafkaCluster(1);
+        cluster.start();
+        cluster.createTopic(LEFT_TABLE);
+        cluster.createTopic(RIGHT_TABLE);
+        cluster.createTopic(OUTPUT);
+        return cluster;
     }
 
     private static Map<String, String> asMap(final KeyValueStore<String, String> store) {
