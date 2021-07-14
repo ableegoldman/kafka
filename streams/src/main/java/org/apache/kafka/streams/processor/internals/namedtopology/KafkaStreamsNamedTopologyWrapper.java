@@ -29,7 +29,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.TreeMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Collectors;
 
 /**
@@ -81,7 +81,7 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
                     (v1, v2) -> {
                         throw new IllegalArgumentException("Topology names must be unique");
                     },
-                    () -> new TreeMap<>())),
+                    () -> new ConcurrentSkipListMap<>())),
                 config),
             config,
             clientSupplier

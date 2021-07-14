@@ -32,8 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.SortedMap;
-import java.util.TreeMap;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -53,7 +53,7 @@ public class TopologyMetadata {
     private static final Pattern EMPTY_ZERO_LENGTH_PATTERN = Pattern.compile("");
 
     private final StreamsConfig config;
-    private final SortedMap<String, InternalTopologyBuilder> builders; // Keep sorted by topology name for readability
+    private final ConcurrentNavigableMap<String, InternalTopologyBuilder> builders; // Keep sorted by topology name for readability
 
     private ProcessorTopology globalTopology;
     private final Map<String, StateStore> globalStateStores = new HashMap<>();
@@ -61,7 +61,7 @@ public class TopologyMetadata {
 
     public TopologyMetadata(final InternalTopologyBuilder builder, final StreamsConfig config) {
         this.config = config;
-        builders = new TreeMap<>();
+        builders = new ConcurrentSkipListMap<>();
         if (builder.hasNamedTopology()) {
             builders.put(builder.topologyName(), builder);
         } else {
@@ -69,7 +69,7 @@ public class TopologyMetadata {
         }
     }
 
-    public TopologyMetadata(final SortedMap<String, InternalTopologyBuilder> builders, final StreamsConfig config) {
+    public TopologyMetadata(final ConcurrentNavigableMap<String, InternalTopologyBuilder> builders, final StreamsConfig config) {
         this.config = config;
         this.builders = builders;
         if (builders.isEmpty()) {
