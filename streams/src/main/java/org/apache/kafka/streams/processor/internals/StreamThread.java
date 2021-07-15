@@ -259,7 +259,6 @@ public class StreamThread extends Thread {
     private final int maxPollTimeMs;
     private final String originalReset;
     private final TaskManager taskManager;
-    private final AtomicLong nextProbingRebalanceMs;
 
     private final StreamsMetricsImpl streamsMetrics;
     private final Sensor commitSensor;
@@ -301,9 +300,15 @@ public class StreamThread extends Thread {
 
     private java.util.function.Consumer<Throwable> streamsUncaughtExceptionHandler;
     private final Runnable shutdownErrorHook;
+
+    // These must be Atomic references as they are shared and used to signal between the assignor and the stream thread
     private final AtomicInteger assignmentErrorCode;
-    private final AtomicLong cacheResizeSize;
-    private final AtomicBoolean leaveGroupRequested;
+    private final AtomicLong nextProbingRebalanceMs;
+
+    // These are used to signal from outside the stream thread, but the variables themselves are internal to the thread
+    private final AtomicLong cacheResizeSize = new AtomicLong(-1L);
+    private final AtomicBoolean leaveGroupRequested = new AtomicBoolean(false);
+    private final AtomicBoolean topologyUpdated = new AtomicBoolean(false);
 
     public static StreamThread create(final TopologyMetadata topologyMetadata,
                                       final StreamsConfig config,
@@ -479,7 +484,6 @@ public class StreamThread extends Thread {
                         final java.util.function.Consumer<Long> cacheResizer) {
         super(threadId);
         this.stateLock = new Object();
-        this.leaveGroupRequested = new AtomicBoolean(false);
         this.adminClient = adminClient;
         this.streamsMetrics = streamsMetrics;
         this.commitSensor = ThreadMetrics.commitSensor(threadId, streamsMetrics);
@@ -495,7 +499,6 @@ public class StreamThread extends Thread {
         this.commitRatioSensor = ThreadMetrics.commitRatioSensor(threadId, streamsMetrics);
         this.failedStreamThreadSensor = ClientMetrics.failedStreamThreadSensor(streamsMetrics);
         this.assignmentErrorCode = assignmentErrorCode;
-        this.cacheResizeSize = new AtomicLong(-1L);
         this.shutdownErrorHook = shutdownErrorHook;
         this.streamsUncaughtExceptionHandler = streamsUncaughtExceptionHandler;
         this.cacheResizer = cacheResizer;
@@ -576,7 +579,7 @@ public class StreamThread extends Thread {
         while (isRunning() || taskManager.isRebalanceInProgress()) {
             try {
                 maybeSendShutdown();
-                final Long size = cacheResizeSize.getAndSet(-1L);
+                final long size = cacheResizeSize.getAndSet(-1L);
                 if (size != -1L) {
                     cacheResizer.accept(size);
                 }
@@ -694,6 +697,10 @@ public class StreamThread extends Thread {
         cacheResizeSize.set(size);
     }
 
+    public void topologyUpdated() {
+        topologyUpdated.set(true);
+    }
+
     /**
      * One iteration of a thread includes the following steps:
      *
@@ -724,7 +731,7 @@ public class StreamThread extends Thread {
         // Should only proceed when the thread is still running after #pollRequests(), because no external state mutation
         // could affect the task manager state beyond this point within #runOnce().
         if (!isRunning()) {
-            log.info("Thread state is already {}, skipping the run once call after poll request", state);
+            log.debug("Thread state is already {}, skipping the run once call after poll request", state);
             return;
         }
 
@@ -870,6 +877,13 @@ public class StreamThread extends Thread {
     private long pollPhase() {
         final ConsumerRecords<byte[], byte[]> records;
         log.debug("Invoking poll on main Consumer");
+
+        if (topologyUpdated.get()) {
+            log.debug("StreamThread has detected an update to the topology, triggering a rebalance to update the assignment");
+            subscribeConsumer();
+            mainConsumer.enforceRebalance();
+            topologyUpdated.set(false);
+        }
 
         if (state == State.PARTITIONS_ASSIGNED) {
             // try to fetch some records with zero poll millis

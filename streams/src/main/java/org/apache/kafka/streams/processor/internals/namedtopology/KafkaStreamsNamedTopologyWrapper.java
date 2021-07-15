@@ -21,6 +21,7 @@ import org.apache.kafka.streams.KafkaClientSupplier;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.TopologyException;
+import org.apache.kafka.streams.processor.internals.StreamThread;
 import org.apache.kafka.streams.processor.internals.TopologyMetadata;
 
 import java.util.Collection;
@@ -28,14 +29,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.TreeMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Collectors;
 
 /**
  * This is currently an internal and experimental feature for enabling certain kinds of topology upgrades. Use at
  * your own risk.
  *
- * Status: basic architecture implemented but no actual upgrades are supported yet
+ * Status: additive upgrades possible, removal of NamedTopologies not yet supported
  *
  * Note: some standard features of Kafka Streams are not yet supported with NamedTopologies. These include:
  *       - global state stores
@@ -80,7 +81,7 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
                     (v1, v2) -> {
                         throw new IllegalArgumentException("Topology names must be unique");
                     },
-                    () -> new TreeMap<>())),
+                    () -> new ConcurrentSkipListMap<>())),
                 config),
             config,
             clientSupplier
@@ -98,13 +99,58 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
         }
     }
 
-    public void addNamedTopology(final NamedTopology topology) {
-        nameToTopology.put(topology.name(), topology);
-        throw new UnsupportedOperationException();
+    /**
+     * Add a new Namedtopology to a running Kafka Streams app. If multiple instances of the application are running,
+     * you should inform all of them by calling {@link #addNamedTopology(NamedTopology)} on each client. You do not
+     * need to worry about synchronizing between the clients, however, as Kafka Streams will handle that transparently.
+     *
+     * @throws IllegalArgumentException if this topology name is already in use
+     * @throws IllegalStateException    if streams has not been started or has already shut down
+     * @throws TopologyException        if this topology subscribes to any input topics or pattern already in use
+     */
+    public void addNamedTopology(final NamedTopology newTopology) {
+        if (!isRunningOrRebalancing()) {
+            throw new IllegalStateException("Cannot add a NamedTopology while the state is " + super.state);
+        }
+
+        // If there are no topologies yet, there are no StreamThreads, so we must add one
+        if (nameToTopology.isEmpty())  {
+            // TODO KAFKA-12648: use a CV to wait/notify existing threads instead of adding/removing them
+            addStreamThread();
+        }
+        nameToTopology.put(newTopology.name(), newTopology);
+        topologyMetadata.registerAndBuildNewTopology(newTopology.internalTopologyBuilder());
+
+        processStreamThread(StreamThread::topologyUpdated);
+        // TODO KAFKA-12648: make sure assignor only distributes known tasks
     }
 
-    public void removeNamedTopology(final String namedTopology) {
-        throw new UnsupportedOperationException();
+    /**
+     * Remove an existing Namedtopology from a running Kafka Streams app. If multiple instances of the application are
+     * running, you should inform all of them by calling {@link #removeNamedTopology(String)} on each client. You do
+     * not need to worry about synchronizing between the clients, however, as Kafka Streams will handle that transparently.
+     *
+     * @throws IllegalArgumentException if this topology name cannot be found
+     * @throws IllegalStateException    if streams has not been started or has already shut down
+     * @throws TopologyException        if this topology subscribes to any input topics or pattern already in use
+     */
+    public void removeNamedTopology(final String topologyToRemove) {
+        if (!isRunningOrRebalancing()) {
+            throw new IllegalStateException("Cannot remove a NamedTopology while the state is " + super.state);
+        } else if (!nameToTopology.containsKey(topologyToRemove)) {
+            throw new IllegalArgumentException("Unable to locate a NamedTopology called " + topologyToRemove);
+        }
+
+        nameToTopology.remove(topologyToRemove);
+        topologyMetadata.unregisterTopology(topologyToRemove);
+
+        processStreamThread(StreamThread::topologyUpdated);
+
+        if (nameToTopology.isEmpty()) {
+            // TODO KAFKA-12648: use a CV to wait/notify existing threads instead of adding/removing them
+            processStreamThread(thread -> removeStreamThread());
+        }
+        // TODO KAFKA-12648: make sure assignor only distributes known tasks
     }
 
     public String getFullTopologyDescription() {
