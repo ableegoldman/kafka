@@ -39,6 +39,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -63,6 +64,9 @@ class ActiveTaskCreator {
     private final StreamsProducer threadProducer;
     private final Map<TaskId, StreamsProducer> taskProducers;
     private final StreamThread.ProcessingMode processingMode;
+
+    // tasks may be assigned for a NamedTopology that is not yet known by this host, and saved for later creation
+    private final Map<TaskId, Set<TopicPartition>>  unknownTasksToBeCreated = new HashMap<>();
 
     ActiveTaskCreator(final TopologyMetadata topologyMetadata,
                       final StreamsConfig config,
@@ -132,11 +136,17 @@ class ActiveTaskCreator {
         return threadProducer;
     }
 
+    Map<TaskId, Set<TopicPartition>> uncreatedTasksForTopologies(final Set<String> currentTopologies) {
+        return unknownTasksToBeCreated.entrySet().stream().filter(t -> currentTopologies.contains(t.getKey().namedTopology())).collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+    }
+
     // TODO: change return type to `StreamTask`
     Collection<Task> createTasks(final Consumer<byte[], byte[]> consumer,
                                  final Map<TaskId, Set<TopicPartition>> tasksToBeCreated) {
         // TODO: change type to `StreamTask`
         final List<Task> createdTasks = new ArrayList<>();
+        final Map<TaskId, Set<TopicPartition>>  newUnknownTasks = new HashMap<>();
+
         for (final Map.Entry<TaskId, Set<TopicPartition>> newTaskAndPartitions : tasksToBeCreated.entrySet()) {
             final TaskId taskId = newTaskAndPartitions.getKey();
             final Set<TopicPartition> partitions = newTaskAndPartitions.getValue();
@@ -144,6 +154,11 @@ class ActiveTaskCreator {
             final LogContext logContext = getLogContext(taskId);
 
             final ProcessorTopology topology = topologyMetadata.buildSubtopology(taskId);
+            if (topology == null) {
+                // task belongs to a named topology that hasn't been added yet, wait until it has to create this
+                newUnknownTasks.put(taskId, partitions);
+                continue;
+            }
 
             final ProcessorStateManager stateManager = new ProcessorStateManager(
                 taskId,
@@ -176,8 +191,13 @@ class ActiveTaskCreator {
                 )
             );
         }
+        if (!newUnknownTasks.isEmpty()) {
+            log.info("Delaying creation of tasks not yet known by this instance: {}", newUnknownTasks.keySet());
+            unknownTasksToBeCreated.putAll(newUnknownTasks);
+        }
         return createdTasks;
     }
+
 
     StreamTask createActiveTaskFromStandby(final StandbyTask standbyTask,
                                            final Set<TopicPartition> inputPartitions,

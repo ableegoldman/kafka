@@ -26,6 +26,7 @@ import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder.Topi
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -34,6 +35,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -50,13 +54,23 @@ public class TopologyMetadata {
     private static final Pattern EMPTY_ZERO_LENGTH_PATTERN = Pattern.compile("");
 
     private final StreamsConfig config;
+    private final TopologyVersion version;
     private final ConcurrentNavigableMap<String, InternalTopologyBuilder> builders; // Keep sorted by topology name for readability
 
     private ProcessorTopology globalTopology;
     private final Map<String, StateStore> globalStateStores = new HashMap<>();
     private final Set<String> allInputTopics = new HashSet<>();
 
-    public TopologyMetadata(final InternalTopologyBuilder builder, final StreamsConfig config) {
+    public static class TopologyVersion {
+        public AtomicLong topologyVersion = new AtomicLong(0L); // the version of the topology for this instance
+        public AtomicLong highestTopologyVersion = new AtomicLong(0L); // the highest version in the current group
+        public ReentrantLock topologyLock = new ReentrantLock();
+        public Condition topologyCV = topologyLock.newCondition();
+    }
+
+    public TopologyMetadata(final InternalTopologyBuilder builder,
+                            final StreamsConfig config) {
+        version = new TopologyVersion();
         this.config = config;
         builders = new ConcurrentSkipListMap<>();
         if (builder.hasNamedTopology()) {
@@ -66,12 +80,96 @@ public class TopologyMetadata {
         }
     }
 
-    public TopologyMetadata(final ConcurrentNavigableMap<String, InternalTopologyBuilder> builders, final StreamsConfig config) {
+    public TopologyMetadata(final ConcurrentNavigableMap<String, InternalTopologyBuilder> builders,
+                            final StreamsConfig config) {
+        version = new TopologyVersion();
         this.config = config;
         this.builders = builders;
         if (builders.isEmpty()) {
-            log.debug("Building KafkaStreams app with no topology");
+            log.debug("Starting up empty KafkaStreams app with no topology");
         }
+    }
+
+    public void updateCurrentHighestTopologyVersion(final long highestTopologyVersion) {
+        version.highestTopologyVersion.set(highestTopologyVersion);
+    }
+
+    public long highestTopologyVersion() {
+        return version.highestTopologyVersion.get();
+    }
+
+    public long topologyVersion() {
+        return version.topologyVersion.get();
+    }
+
+    public ReentrantLock topologyVersionLock() {
+        return version.topologyLock;
+    }
+
+    public Condition topologyVersionCV() {
+        return version.topologyCV;
+    }
+
+    public void registerAndBuildNewTopology(final InternalTopologyBuilder newTopologyBuilder) {
+        try {
+            version.topologyLock.lock();
+            version.topologyVersion.incrementAndGet();
+            log.info("Adding NamedTopology {}, latest topology version is {}", newTopologyBuilder.topologyName(), version.topologyVersion.get());
+            builders.put(newTopologyBuilder.topologyName(), newTopologyBuilder);
+            buildAndVerifyTopology(newTopologyBuilder);
+            version.topologyCV.signalAll();
+        } finally {
+            version.topologyLock.unlock();
+        }
+    }
+
+    public void unregisterTopology(final String topologyName) {
+        try {
+            version.topologyLock.lock();
+            version.topologyVersion.incrementAndGet();
+            log.info("Removing NamedTopology {}, latest topology version is {}", topologyName, version.topologyVersion.get());
+            builders.remove(topologyName);
+            version.topologyCV.signalAll();
+        } finally {
+            version.topologyLock.unlock();
+        }
+    }
+
+    public void buildAndRewriteTopology() {
+        applyToEachBuilder(this::buildAndVerifyTopology);
+    }
+
+    private void buildAndVerifyTopology(final InternalTopologyBuilder builder) {
+        builder.rewriteTopology(config);
+        builder.buildTopology();
+
+        // As we go, check each topology for overlap in the set of input topics/patterns
+        final int numInputTopics = allInputTopics.size();
+        final List<String> inputTopics = builder.fullSourceTopicNames();
+        final Collection<String> inputPatterns = builder.allSourcePatternStrings();
+
+        final int numNewInputTopics = inputTopics.size() + inputPatterns.size();
+        allInputTopics.addAll(inputTopics);
+        allInputTopics.addAll(inputPatterns);
+        if (allInputTopics.size() != numInputTopics + numNewInputTopics) {
+            inputTopics.retainAll(allInputTopics);
+            inputPatterns.retainAll(allInputTopics);
+            inputTopics.addAll(inputPatterns);
+            log.error("Tried to add the NamedTopology {} but it had overlap with other input topics: {}", builder.topologyName(), inputTopics);
+            throw new TopologyException("Named Topologies may not subscribe to the same input topics or patterns");
+        }
+
+        final ProcessorTopology globalTopology = builder.buildGlobalStateTopology();
+        if (globalTopology != null) {
+            if (builder.topologyName() != null) {
+                throw new IllegalStateException("Global state stores are not supported with Named Topologies");
+            } else if (this.globalTopology == null) {
+                this.globalTopology = globalTopology;
+            } else {
+                throw new IllegalStateException("Topology builder had global state, but global topology has already been set");
+            }
+        }
+        globalStateStores.putAll(builder.globalStateStores());
     }
 
     public int getNumStreamThreads(final StreamsConfig config) {
@@ -116,7 +214,11 @@ public class TopologyMetadata {
         return !builders.containsKey(UNNAMED_TOPOLOGY);
     }
 
-    public synchronized boolean isACurrentNamedTopologyOrElseHasNone(final String topologyName) {
+    Set<String> namedTopologiesView() {
+        return Collections.unmodifiableSet(builders.keySet());
+    }
+
+    public boolean isACurrentNamedTopologyOrElseHasNone(final String topologyName) {
         if (topologyName == null) {
             return true;
         }
@@ -204,54 +306,12 @@ public class TopologyMetadata {
         return sb.toString();
     }
 
-    public void registerAndBuildNewTopology(final InternalTopologyBuilder newTopologyBuilder) {
-        builders.put(newTopologyBuilder.topologyName(), newTopologyBuilder);
-        buildAndVerifyTopology(newTopologyBuilder);
-    }
-
-    public void unregisterTopology(final String topologyName) {
-        log.info("Removing NamedTopology {}", topologyName);
-        builders.remove(topologyName);
-    }
-
-    public void buildAndRewriteTopology() {
-        applyToEachBuilder(this::buildAndVerifyTopology);
-    }
-    private void buildAndVerifyTopology(final InternalTopologyBuilder builder) {
-        builder.rewriteTopology(config);
-        builder.buildTopology();
-
-        // As we go, check each topology for overlap in the set of input topics/patterns
-        final int numInputTopics = allInputTopics.size();
-        final List<String> inputTopics = builder.fullSourceTopicNames();
-        final Collection<String> inputPatterns = builder.allSourcePatternStrings();
-
-        final int numNewInputTopics = inputTopics.size() + inputPatterns.size();
-        allInputTopics.addAll(inputTopics);
-        allInputTopics.addAll(inputPatterns);
-        if (allInputTopics.size() != numInputTopics + numNewInputTopics) {
-            inputTopics.retainAll(allInputTopics);
-            inputPatterns.retainAll(allInputTopics);
-            inputTopics.addAll(inputPatterns);
-            log.error("Tried to add the NamedTopology {} but it had overlap with other input topics: {}", builder.topologyName(), inputTopics);
-            throw new TopologyException("Named Topologies may not subscribe to the same input topics or patterns");
-        }
-
-        final ProcessorTopology globalTopology = builder.buildGlobalStateTopology();
-        if (globalTopology != null) {
-            if (builder.topologyName() != null) {
-                throw new IllegalStateException("Global state stores are not supported with Named Topologies");
-            } else if (this.globalTopology == null) {
-                this.globalTopology = globalTopology;
-            } else {
-                throw new IllegalStateException("Topology builder had global state, but global topology has already been set");
-            }
-        }
-        globalStateStores.putAll(builder.globalStateStores());
-    }
-
+    /**
+     * @return the subtopology built for this task, or null if the corresponding NamedTopology does not (yet) exist
+     */
     public ProcessorTopology buildSubtopology(final TaskId task) {
-        return lookupBuilderForTask(task).buildSubtopology(task.subtopology());
+        final InternalTopologyBuilder builder = lookupBuilderForTask(task);
+        return builder == null ? null : builder.buildSubtopology(task.subtopology());
     }
 
     public ProcessorTopology globalTaskTopology() {

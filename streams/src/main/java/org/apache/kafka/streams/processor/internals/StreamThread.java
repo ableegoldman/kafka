@@ -62,6 +62,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.processor.internals.ClientUtils.getConsumerClientId;
@@ -301,6 +303,10 @@ public class StreamThread extends Thread {
     private java.util.function.Consumer<Throwable> streamsUncaughtExceptionHandler;
     private final Runnable shutdownErrorHook;
 
+    private long lastSeenTopologyVersion = 0L;
+    private final ReentrantLock topologyVersionLock;
+    private final Condition topologyVersionCV;
+
     // These must be Atomic references as they are shared and used to signal between the assignor and the stream thread
     private final AtomicInteger assignmentErrorCode;
     private final AtomicLong nextProbingRebalanceMs;
@@ -308,7 +314,6 @@ public class StreamThread extends Thread {
     // These are used to signal from outside the stream thread, but the variables themselves are internal to the thread
     private final AtomicLong cacheResizeSize = new AtomicLong(-1L);
     private final AtomicBoolean leaveGroupRequested = new AtomicBoolean(false);
-    private final AtomicBoolean topologyUpdated = new AtomicBoolean(false);
 
     public static StreamThread create(final TopologyMetadata topologyMetadata,
                                       final StreamsConfig config,
@@ -502,6 +507,8 @@ public class StreamThread extends Thread {
         this.shutdownErrorHook = shutdownErrorHook;
         this.streamsUncaughtExceptionHandler = streamsUncaughtExceptionHandler;
         this.cacheResizer = cacheResizer;
+        this.topologyVersionLock = topologyMetadata.topologyVersionLock();
+        this.topologyVersionCV = topologyMetadata.topologyVersionCV();
 
         // The following sensors are created here but their references are not stored in this object, since within
         // this object they are not recorded. The sensors are created here so that the stream threads starts with all
@@ -697,10 +704,6 @@ public class StreamThread extends Thread {
         cacheResizeSize.set(size);
     }
 
-    public void topologyUpdated() {
-        topologyUpdated.set(true);
-    }
-
     /**
      * One iteration of a thread includes the following steps:
      *
@@ -878,17 +881,37 @@ public class StreamThread extends Thread {
         final ConsumerRecords<byte[], byte[]> records;
         log.debug("Invoking poll on main Consumer");
 
-        if (topologyUpdated.get()) {
-            log.debug("StreamThread has detected an update to the topology, triggering a rebalance to update the assignment");
-            subscribeConsumer();
-            mainConsumer.enforceRebalance();
-            topologyUpdated.set(false);
+        if (lastSeenTopologyVersion < topologyMetadata.topologyVersion()) {
+            try {
+                topologyVersionLock.lock();
+                lastSeenTopologyVersion = topologyMetadata.topologyVersion();
+                taskManager.maybeCreateTasksFromNewTopologies();
+                if (lastSeenTopologyVersion > topologyMetadata.highestTopologyVersion()) {
+                    log.info("StreamThread has detected a new update to the topology, triggering a rebalance to update the group assignment");
+                    subscribeConsumer();
+                    mainConsumer.enforceRebalance();
+                }
+            } finally {
+                topologyVersionLock.unlock();
+            }
         }
 
         if (state == State.PARTITIONS_ASSIGNED) {
             // try to fetch some records with zero poll millis
             // to unblock the restoration as soon as possible
             records = pollRequests(Duration.ZERO);
+            if (topologyMetadata.isEmpty()) {
+                try {
+                    topologyVersionLock.lock();
+                    if (topologyMetadata.isEmpty()) {
+                        topologyVersionCV.await();
+                    }
+                } catch (final InterruptedException e) {
+                    log.debug("StreamThread was interrupted while waiting on empty topology", e);
+                } finally {
+                    topologyVersionLock.unlock();
+                }
+            }
         } else if (state == State.PARTITIONS_REVOKED) {
             // try to fetch some records with zero poll millis to unblock
             // other useful work while waiting for the join response

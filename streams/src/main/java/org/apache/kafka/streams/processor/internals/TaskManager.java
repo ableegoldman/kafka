@@ -941,6 +941,14 @@ public class TaskManager {
         return tasksToCloseDirty;
     }
 
+    public void updateCurrentHighestTopologyVersion(final long highestTopologyVersion) {
+        topologyMetadata.updateCurrentHighestTopologyVersion(highestTopologyVersion);
+    }
+
+    void maybeCreateTasksFromNewTopologies() {
+        tasks.maybeCreateTasksFromNewTopologies();
+    }
+
     Set<TaskId> activeTaskIds() {
         return activeTaskStream()
             .map(Task::id)

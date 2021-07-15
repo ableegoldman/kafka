@@ -21,7 +21,6 @@ import org.apache.kafka.streams.KafkaClientSupplier;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.TopologyException;
-import org.apache.kafka.streams.processor.internals.StreamThread;
 import org.apache.kafka.streams.processor.internals.TopologyMetadata;
 
 import java.util.Collection;
@@ -100,7 +99,7 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
     }
 
     /**
-     * Add a new Namedtopology to a running Kafka Streams app. If multiple instances of the application are running,
+     * Add a new NamedTopology to a running Kafka Streams app. If multiple instances of the application are running,
      * you should inform all of them by calling {@link #addNamedTopology(NamedTopology)} on each client. You do not
      * need to worry about synchronizing between the clients, however, as Kafka Streams will handle that transparently.
      *
@@ -113,20 +112,18 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
             throw new IllegalStateException("Cannot add a NamedTopology while the state is " + super.state);
         }
 
+        topologyMetadata.registerAndBuildNewTopology(newTopology.internalTopologyBuilder());
+
         // If there are no topologies yet, there are no StreamThreads, so we must add one
         if (nameToTopology.isEmpty())  {
             // TODO KAFKA-12648: use a CV to wait/notify existing threads instead of adding/removing them
             addStreamThread();
         }
         nameToTopology.put(newTopology.name(), newTopology);
-        topologyMetadata.registerAndBuildNewTopology(newTopology.internalTopologyBuilder());
-
-        processStreamThread(StreamThread::topologyUpdated);
-        // TODO KAFKA-12648: make sure assignor only distributes known tasks
     }
 
     /**
-     * Remove an existing Namedtopology from a running Kafka Streams app. If multiple instances of the application are
+     * Remove an existing NamedTopology from a running Kafka Streams app. If multiple instances of the application are
      * running, you should inform all of them by calling {@link #removeNamedTopology(String)} on each client. You do
      * not need to worry about synchronizing between the clients, however, as Kafka Streams will handle that transparently.
      *
@@ -144,13 +141,11 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
         nameToTopology.remove(topologyToRemove);
         topologyMetadata.unregisterTopology(topologyToRemove);
 
-        processStreamThread(StreamThread::topologyUpdated);
-
         if (nameToTopology.isEmpty()) {
             // TODO KAFKA-12648: use a CV to wait/notify existing threads instead of adding/removing them
             processStreamThread(thread -> removeStreamThread());
         }
-        // TODO KAFKA-12648: make sure assignor only distributes known tasks
+        // TODO KAFKA-12648: make sure local state from
     }
 
     public String getFullTopologyDescription() {
