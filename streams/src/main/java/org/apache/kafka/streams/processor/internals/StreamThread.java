@@ -900,7 +900,7 @@ public class StreamThread extends Thread {
             // try to fetch some records with zero poll millis
             // to unblock the restoration as soon as possible
             records = pollRequests(Duration.ZERO);
-            if (topologyMetadata.isEmpty()) {
+            while (topologyMetadata.isEmpty()) {
                 try {
                     topologyVersionLock.lock();
                     if (topologyMetadata.isEmpty()) {

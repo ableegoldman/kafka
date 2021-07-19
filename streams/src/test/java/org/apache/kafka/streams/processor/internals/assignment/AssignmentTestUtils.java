@@ -141,7 +141,7 @@ public final class AssignmentTestUtils {
     }
 
     public static Set<String> namedTopologiesOfTasks(final Set<TaskId> tasks) {
-        return tasks.stream().map(TaskId::namedTopology).collect(Collectors.toSet());
+        return tasks.stream().map(TaskId::namedTopology).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
     public static Set<String> namedTopologiesOfTasks(final Set<TaskId> activeTasks,
