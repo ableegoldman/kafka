@@ -54,6 +54,8 @@ public class ClientState {
     private final ClientStateTask previousStandbyTasks = new ClientStateTask(null, null);
     private final ClientStateTask revokingActiveTasks = new ClientStateTask(null, new TreeMap<>());
 
+    private final Set<String> supportedNamedTopologies;
+
     private int capacity;
 
     public ClientState() {
@@ -66,6 +68,7 @@ public class ClientState {
 
         taskOffsetSums = new TreeMap<>();
         taskLagTotals = new TreeMap<>();
+        supportedNamedTopologies = new HashSet<>();
         this.capacity = capacity;
     }
 
@@ -77,6 +80,7 @@ public class ClientState {
         this.previousStandbyTasks.taskIds(unmodifiableSet(new TreeSet<>(previousStandbyTasks)));
         this.previousActiveTasks.taskIds(unmodifiableSet(new TreeSet<>(previousActiveTasks)));
         taskOffsetSums = emptyMap();
+        supportedNamedTopologies = new HashSet<>();
         this.taskLagTotals = unmodifiableMap(taskLagTotals);
         this.capacity = capacity;
     }
@@ -322,7 +326,12 @@ public class ClientState {
     public long lagFor(final TaskId task) {
         final Long totalLag = taskLagTotals.get(task);
         if (totalLag == null) {
-            throw new IllegalStateException("Tried to lookup lag for unknown task " + task);
+            if (supportedNamedTopologies.contains(task.namedTopology())) {
+                throw new IllegalStateException("Tried to lookup lag for unknown task " + task);
+            } else {
+                // Don't throw if we don't recognize the task if it's just from an old/unknown NamedTopology on disk
+                return UNKNOWN_OFFSET_SUM;
+            }
         }
         return totalLag;
     }

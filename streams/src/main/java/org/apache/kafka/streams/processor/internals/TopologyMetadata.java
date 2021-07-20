@@ -105,36 +105,53 @@ public class TopologyMetadata {
         return version.topologyVersion.get();
     }
 
-    public ReentrantLock topologyVersionLock() {
-        return version.topologyLock;
+    public void lock() {
+        version.topologyLock.lock();
     }
 
-    public Condition topologyVersionCV() {
-        return version.topologyCV;
+    public void unlock() {
+        version.topologyLock.unlock();
+    }
+
+    /**
+     * @throws IllegalStateException if the thread is not already holding the lock via TopologyMetadata#lock
+     */
+    public void maybeWaitForNonEmptyTopology() {
+        if (!version.topologyLock.isHeldByCurrentThread()) {
+            throw new IllegalStateException("Must call lock() before attempting to wait on non-empty topology");
+        }
+        while (isEmpty()) {
+            try {
+                log.debug("Detected that the topology is currently empty, going to wait for something to be added");
+                version.topologyCV.await();
+            } catch (final InterruptedException e) {
+                log.debug("StreamThread was interrupted while waiting on empty topology", e);
+            }
+        }
     }
 
     public void registerAndBuildNewTopology(final InternalTopologyBuilder newTopologyBuilder) {
         try {
-            version.topologyLock.lock();
+            lock();
             version.topologyVersion.incrementAndGet();
             log.info("Adding NamedTopology {}, latest topology version is {}", newTopologyBuilder.topologyName(), version.topologyVersion.get());
             builders.put(newTopologyBuilder.topologyName(), newTopologyBuilder);
             buildAndVerifyTopology(newTopologyBuilder);
             version.topologyCV.signalAll();
         } finally {
-            version.topologyLock.unlock();
+            unlock();
         }
     }
 
     public void unregisterTopology(final String topologyName) {
         try {
-            version.topologyLock.lock();
+            lock();
             version.topologyVersion.incrementAndGet();
             log.info("Removing NamedTopology {}, latest topology version is {}", topologyName, version.topologyVersion.get());
             builders.remove(topologyName);
             version.topologyCV.signalAll();
         } finally {
-            version.topologyLock.unlock();
+            unlock();
         }
     }
 

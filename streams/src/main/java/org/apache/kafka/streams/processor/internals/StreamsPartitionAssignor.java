@@ -160,26 +160,6 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
         }
     }
 
-    private static class AssignmentMetadata {
-        final int minUserMetadataVersion;
-        final int minSupportedMetadataVersion;
-        final boolean versionProbing;
-        final boolean shouldTriggerProbingRebalance;
-        final long highestTopologyVersion;
-
-        public AssignmentMetadata(final int minUserMetadataVersion,
-                                  final int minSupportedMetadataVersion,
-                                  final boolean versionProbing,
-                                  final boolean shouldTriggerProbingRebalance,
-                                  final long highestTopologyVersion) {
-            this.minUserMetadataVersion = minUserMetadataVersion;
-            this.minSupportedMetadataVersion = minSupportedMetadataVersion;
-            this.versionProbing = versionProbing;
-            this.shouldTriggerProbingRebalance = shouldTriggerProbingRebalance;
-            this.highestTopologyVersion = highestTopologyVersion;
-        }
-    }
-
     // keep track of any future consumers in a "dummy" Client since we can't decipher their subscription
     private static final UUID FUTURE_ID = randomUUID();
 
@@ -369,6 +349,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             clientMetadata.addConsumer(consumerId, subscription.ownedPartitions());
             allOwnedPartitions.addAll(subscription.ownedPartitions());
             clientMetadata.addPreviousTasksAndOffsetSums(consumerId, info.taskOffsetSums());
+
             if (info.topologyVersionNumber() > highestTopologyVersion)  {
                 latestNamedTopologies = info.supportedNamedTopologies();
                 highestTopologyVersion = info.topologyVersionNumber();
@@ -434,8 +415,6 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
 
             // compute the assignment of tasks to threads within each client and build the final group assignment
 
-            final AssignmentMetadata assignmentMetadata = new AssignmentMetadata(minReceivedMetadataVersion, minSupportedMetadataVersion, versionProbing, probingRebalanceNeeded, highestTopologyVersion);
-
             final Map<String, Assignment> assignment = computeNewAssignment(
                 statefulTasks,
                 clientMetadataMap,
@@ -443,7 +422,10 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                 partitionsByHost,
                 standbyPartitionsByHost,
                 allOwnedPartitions,
-                assignmentMetadata
+                minReceivedMetadataVersion,
+                minSupportedMetadataVersion,
+                versionProbing,
+                probingRebalanceNeeded
             );
 
             return new GroupAssignment(assignment);
@@ -784,8 +766,11 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                                                          final Map<HostInfo, Set<TopicPartition>> partitionsByHostState,
                                                          final Map<HostInfo, Set<TopicPartition>> standbyPartitionsByHost,
                                                          final Set<TopicPartition> allOwnedPartitions,
-                                                         final AssignmentMetadata metadata) {
-        boolean rebalanceRequired = metadata.shouldTriggerProbingRebalance || metadata.versionProbing;
+                                                         final int minUserMetadataVersion,
+                                                         final int minSupportedMetadataVersion,
+                                                         final boolean versionProbing,
+                                                         final boolean shouldTriggerProbingRebalance) {
+        boolean rebalanceRequired = shouldTriggerProbingRebalance || versionProbing;
         final Map<String, Assignment> assignment = new HashMap<>();
 
         // within the client, distribute tasks to its owned consumers
@@ -812,7 +797,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             // Arbitrarily choose the leader's client to be responsible for triggering the probing rebalance,
             // note once we pick the first consumer within the process to trigger probing rebalance, other consumer
             // would not set to trigger any more.
-            final boolean encodeNextProbingRebalanceTime = metadata.shouldTriggerProbingRebalance && clientId.equals(taskManager.processId());
+            final boolean encodeNextProbingRebalanceTime = shouldTriggerProbingRebalance && clientId.equals(taskManager.processId());
 
             final boolean tasksRevoked = addClientAssignments(
                 statefulTasks,
@@ -824,8 +809,10 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                 allOwnedPartitions,
                 activeTaskAssignment,
                 standbyTaskAssignment,
-                metadata,
-                encodeNextProbingRebalanceTime
+                minUserMetadataVersion,
+                minSupportedMetadataVersion,
+                encodeNextProbingRebalanceTime,
+                taskManager.topologyMetadata().topologyVersion()
             );
 
             if (tasksRevoked || encodeNextProbingRebalanceTime) {
@@ -871,12 +858,14 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                                          final Set<TopicPartition> allOwnedPartitions,
                                          final Map<String, List<TaskId>> activeTaskAssignments,
                                          final Map<String, List<TaskId>> standbyTaskAssignments,
-                                         final AssignmentMetadata metadata,
-                                         final boolean shouldEncodeProbingRebalance) {
+                                         final int minUserMetadataVersion,
+                                         final int minSupportedMetadataVersion,
+                                         final boolean probingRebalanceNeeded,
+                                         final long assignmentTopologyVersion) {
         boolean followupRebalanceRequiredForRevokedTasks = false;
 
         // We only want to encode a scheduled probing rebalance for a single member in this client
-        boolean encodeProbingRebalance = shouldEncodeProbingRebalance;
+        boolean shouldEncodeProbingRebalance = probingRebalanceNeeded;
 
         // Loop through the consumers and build their assignment
         for (final String consumer : clientMetadata.consumers) {
@@ -906,14 +895,14 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                 );
 
             final AssignmentInfo info = new AssignmentInfo(
-                metadata.minUserMetadataVersion,
-                metadata.minSupportedMetadataVersion,
+                minUserMetadataVersion,
+                minSupportedMetadataVersion,
                 assignedActiveList,
                 standbyTaskMap,
                 partitionsByHostState,
                 standbyPartitionsByHost,
                 AssignorError.NONE.code(),
-                metadata.highestTopologyVersion
+                assignmentTopologyVersion
             );
 
             if (!activeTasksRemovedPendingRevokation.isEmpty()) {
@@ -922,13 +911,13 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                 info.setNextRebalanceTime(0L);
                 followupRebalanceRequiredForRevokedTasks = true;
                 // Don't bother to schedule a probing rebalance if an immediate one is already scheduled
-                encodeProbingRebalance = false;
-            } else if (encodeProbingRebalance) {
+                shouldEncodeProbingRebalance = false;
+            } else if (shouldEncodeProbingRebalance) {
                 final long nextRebalanceTimeMs = time.milliseconds() + probingRebalanceIntervalMs();
                 log.info("Requesting followup rebalance be scheduled by {} for {} ms to probe for caught-up replica tasks.",
                         consumer, nextRebalanceTimeMs);
                 info.setNextRebalanceTime(nextRebalanceTimeMs);
-                encodeProbingRebalance = false;
+                shouldEncodeProbingRebalance = false;
             }
 
             assignment.put(

@@ -278,6 +278,8 @@ public class NamedTopologyIntegrationTest {
 
         // TODO KAFKA-12648: need to make sure that both instances actually did some of this processing of topology-2,
         //  ie that both joined the group after the new topology was added and then successfully processed records from it
+        //  Also: test where we wait for a rebalance between streams.addNamedTopology and streams2.addNamedTopology,
+        //  and vice versa, to make sure we hit case where not all new tasks are initially assigned, and when not all yet known
     }
 
     @Test

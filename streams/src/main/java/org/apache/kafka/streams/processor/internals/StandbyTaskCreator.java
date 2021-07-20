@@ -121,7 +121,7 @@ class StandbyTaskCreator {
                     taskId, partitions
                 );
             }
-
+            unknownTasksToBeCreated.remove(taskId);
         }
         if (!newUnknownTasks.isEmpty()) {
             log.info("Delaying creation of tasks not yet known by this instance: {}", newUnknownTasks.keySet());

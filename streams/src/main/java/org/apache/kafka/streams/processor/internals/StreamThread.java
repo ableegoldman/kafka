@@ -62,8 +62,6 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.processor.internals.ClientUtils.getConsumerClientId;
@@ -304,8 +302,6 @@ public class StreamThread extends Thread {
     private final Runnable shutdownErrorHook;
 
     private long lastSeenTopologyVersion = 0L;
-    private final ReentrantLock topologyVersionLock;
-    private final Condition topologyVersionCV;
 
     // These must be Atomic references as they are shared and used to signal between the assignor and the stream thread
     private final AtomicInteger assignmentErrorCode;
@@ -507,8 +503,6 @@ public class StreamThread extends Thread {
         this.shutdownErrorHook = shutdownErrorHook;
         this.streamsUncaughtExceptionHandler = streamsUncaughtExceptionHandler;
         this.cacheResizer = cacheResizer;
-        this.topologyVersionLock = topologyMetadata.topologyVersionLock();
-        this.topologyVersionCV = topologyMetadata.topologyVersionCV();
 
         // The following sensors are created here but their references are not stored in this object, since within
         // this object they are not recorded. The sensors are created here so that the stream threads starts with all
@@ -881,24 +875,15 @@ public class StreamThread extends Thread {
 
     private void handleTopologyUpdatesPhase() {
         // Check if the topology has been updated since we last checked, ie via #addNamedTopology or #removeNamedTopology
-        if (lastSeenTopologyVersion < topologyMetadata.topologyVersion()) {
-            // If the topology is now empty, there is nothing to do, so wait until signalled after an #addNamedTopology
-            while (topologyMetadata.isEmpty()) {
-                try {
-                    topologyVersionLock.lock();
-                    if (topologyMetadata.isEmpty()) {
-                        log.debug("Detected that the topology is currently empty, going to wait for something to be added");
-                        topologyVersionCV.await();
-                    }
-                } catch (final InterruptedException e) {
-                    log.debug("StreamThread was interrupted while waiting on empty topology", e);
-                } finally {
-                    topologyVersionLock.unlock();
-                }
-            }
-
+        // or if this is the very first topology in which case we may need to wait for it to be non-empty
+        if (lastSeenTopologyVersion < topologyMetadata.topologyVersion() || lastSeenTopologyVersion == 0) {
             try {
-                topologyVersionLock.lock();
+                topologyMetadata.lock();
+
+                // TODO KAFKA-12648 (Pt. 4 - removeNamedTopology()): if we removed the last NamedTopology, we should
+                //  make sure to clean up/commit/close any remaining tasks before waiting for new ones
+
+                topologyMetadata.maybeWaitForNonEmptyTopology();
                 lastSeenTopologyVersion = topologyMetadata.topologyVersion();
                 // If this client ever rebalanced while it's topology version lagged the group leader's, it may have
                 // received tasks corresponding to a NamedTopology it did not yet know. When that happens we just
@@ -914,7 +899,7 @@ public class StreamThread extends Thread {
                     mainConsumer.enforceRebalance();
                 }
             } finally {
-                topologyVersionLock.unlock();
+                topologyMetadata.unlock();
             }
         }
     }

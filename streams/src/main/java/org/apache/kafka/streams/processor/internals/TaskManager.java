@@ -647,7 +647,7 @@ public class TaskManager {
 
         // Not all tasks will create directories, and there may be directories for tasks we don't currently own,
         // so we consider all tasks that are either owned or on disk. This includes stateless tasks, which should
-        // just have an empty changelogOffsets map. However we must be sure to skip any removed NamedTopologies
+        // just have an empty changelogOffsets map. However we should be sure to skip any removed NamedTopologies
         final Set<TaskId> tasksToReport = union(
             HashSet::new,
             lockedTaskDirectories,
