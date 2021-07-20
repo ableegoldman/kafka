@@ -1264,14 +1264,6 @@ public class KafkaStreams implements AutoCloseable {
         } else {
             throw new IllegalStateException("The client is either already started or already stopped, cannot re-start");
         }
-
-        if (topologyMetadata.isEmpty()) {
-            if (setState(State.RUNNING)) {
-                log.debug("Transitioning directly to RUNNING for app with no named topologies");
-            } else {
-                throw new IllegalStateException("Unexpected error in transitioning KafkaStreams with empty processing topology to RUNNING");
-            }
-        }
     }
 
     /**

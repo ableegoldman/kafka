@@ -57,7 +57,7 @@ public class AssignmentInfo {
     private Map<HostInfo, Set<TopicPartition>> standbyPartitionsByHost;
     private int errCode;
     private long nextRebalanceMs = Long.MAX_VALUE;
-    private long highestTopologyVersion = 0L;
+    private long assignmentTopologyVersion = 0L;
 
     // used for decoding and "future consumer" assignments during version probing
     public AssignmentInfo(final int version,
@@ -88,7 +88,7 @@ public class AssignmentInfo {
                           final Map<HostInfo, Set<TopicPartition>> partitionsByHost,
                           final Map<HostInfo, Set<TopicPartition>> standbyPartitionsByHost,
                           final int errCode,
-                          final long highestTopologyVersion) {
+                          final long assignmentTopologyVersion) {
         this.usedVersion = version;
         this.commonlySupportedVersion = commonlySupportedVersion;
         this.activeTasks = activeTasks;
@@ -96,7 +96,7 @@ public class AssignmentInfo {
         this.partitionsByHost = partitionsByHost;
         this.standbyPartitionsByHost = standbyPartitionsByHost;
         this.errCode = errCode;
-        this.highestTopologyVersion = highestTopologyVersion;
+        this.assignmentTopologyVersion = assignmentTopologyVersion;
 
         if (version < 1 || version > LATEST_SUPPORTED_VERSION) {
             throw new IllegalArgumentException("version must be between 1 and " + LATEST_SUPPORTED_VERSION
@@ -140,8 +140,8 @@ public class AssignmentInfo {
         return nextRebalanceMs;
     }
 
-    public long highestTopologyVersion() {
-        return highestTopologyVersion;
+    public long assignmentTopologyVersion() {
+        return assignmentTopologyVersion;
     }
 
     /**
@@ -207,7 +207,7 @@ public class AssignmentInfo {
                     encodeActiveAndStandbyHostPartitions(out);
                     out.writeInt(errCode);
                     out.writeLong(nextRebalanceMs);
-                    out.writeLong(highestTopologyVersion);
+                    out.writeLong(assignmentTopologyVersion);
                     break;
                 default:
                     throw new IllegalStateException("Unknown metadata version: " + usedVersion
@@ -394,7 +394,7 @@ public class AssignmentInfo {
                     decodeActiveAndStandbyHostPartitions(assignmentInfo, in);
                     assignmentInfo.errCode = in.readInt();
                     assignmentInfo.nextRebalanceMs = in.readLong();
-                    assignmentInfo.highestTopologyVersion = in.readLong();
+                    assignmentInfo.assignmentTopologyVersion = in.readLong();
                     break;
                 default:
                     final TaskAssignmentException fatalException = new TaskAssignmentException("Unable to decode assignment data: " +

@@ -727,6 +727,8 @@ public class StreamThread extends Thread {
         final long startMs = time.milliseconds();
         now = startMs;
 
+        handleTopologyUpdatesPhase();
+
         final long pollLatency = pollPhase();
 
         // Shutdown hook could potentially be triggered and transit the thread state to PENDING_SHUTDOWN during #pollRequests().
@@ -877,33 +879,15 @@ public class StreamThread extends Thread {
         log.debug("Idempotent restore call done. Thread state has not changed.");
     }
 
-    private long pollPhase() {
-        final ConsumerRecords<byte[], byte[]> records;
-        log.debug("Invoking poll on main Consumer");
-
+    private void handleTopologyUpdatesPhase() {
+        // Check if the topology has been updated since we last checked, ie via #addNamedTopology or #removeNamedTopology
         if (lastSeenTopologyVersion < topologyMetadata.topologyVersion()) {
-            try {
-                topologyVersionLock.lock();
-                lastSeenTopologyVersion = topologyMetadata.topologyVersion();
-                taskManager.maybeCreateTasksFromNewTopologies();
-                if (lastSeenTopologyVersion > topologyMetadata.highestTopologyVersion()) {
-                    log.info("StreamThread has detected a new update to the topology, triggering a rebalance to update the group assignment");
-                    subscribeConsumer();
-                    mainConsumer.enforceRebalance();
-                }
-            } finally {
-                topologyVersionLock.unlock();
-            }
-        }
-
-        if (state == State.PARTITIONS_ASSIGNED) {
-            // try to fetch some records with zero poll millis
-            // to unblock the restoration as soon as possible
-            records = pollRequests(Duration.ZERO);
+            // If the topology is now empty, there is nothing to do, so wait until signalled after an #addNamedTopology
             while (topologyMetadata.isEmpty()) {
                 try {
                     topologyVersionLock.lock();
                     if (topologyMetadata.isEmpty()) {
+                        log.debug("Detected that the topology is currently empty, going to wait for something to be added");
                         topologyVersionCV.await();
                     }
                 } catch (final InterruptedException e) {
@@ -912,6 +896,37 @@ public class StreamThread extends Thread {
                     topologyVersionLock.unlock();
                 }
             }
+
+            try {
+                topologyVersionLock.lock();
+                lastSeenTopologyVersion = topologyMetadata.topologyVersion();
+                // If this client ever rebalanced while it's topology version lagged the group leader's, it may have
+                // received tasks corresponding to a NamedTopology it did not yet know. When that happens we just
+                // stash those assigned taskIds away until we catch up on the topology changes, then create them later
+                taskManager.maybeCreateTasksFromNewTopologies();
+
+                // If this client's version is now greater than that used to assign tasks during the last rebalance,
+                // trigger a new one since there may be new tasks to assign from a #addNamedTopology or else existing
+                // tasks to remove from the assignment after a #removeNamedTopology
+                if (lastSeenTopologyVersion > topologyMetadata.assignmentTopologyVersion()) {
+                    log.info("StreamThread has detected a new update to the topology, triggering a rebalance to update the group assignment");
+                    subscribeConsumer();
+                    mainConsumer.enforceRebalance();
+                }
+            } finally {
+                topologyVersionLock.unlock();
+            }
+        }
+    }
+
+    private long pollPhase() {
+        final ConsumerRecords<byte[], byte[]> records;
+        log.debug("Invoking poll on main Consumer");
+
+        if (state == State.PARTITIONS_ASSIGNED) {
+            // try to fetch some records with zero poll millis
+            // to unblock the restoration as soon as possible
+            records = pollRequests(Duration.ZERO);
         } else if (state == State.PARTITIONS_REVOKED) {
             // try to fetch some records with zero poll millis to unblock
             // other useful work while waiting for the join response

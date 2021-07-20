@@ -1319,7 +1319,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
         // we do not capture any exceptions but just let the exception thrown from consumer.poll directly
         // since when stream thread captures it, either we close all tasks as dirty or we close thread
         taskManager.handleAssignment(activeTasks, info.standbyTasks());
-        taskManager.updateCurrentHighestTopologyVersion(info.highestTopologyVersion());
+        taskManager.updateCurrentAssigmentTopologyVersion(info.assignmentTopologyVersion());
     }
 
     private void maybeScheduleFollowupRebalance(final long encodedNextScheduledRebalanceMs,

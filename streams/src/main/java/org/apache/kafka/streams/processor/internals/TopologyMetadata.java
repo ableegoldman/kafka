@@ -62,8 +62,8 @@ public class TopologyMetadata {
     private final Set<String> allInputTopics = new HashSet<>();
 
     public static class TopologyVersion {
-        public AtomicLong topologyVersion = new AtomicLong(0L); // the version of the topology for this instance
-        public AtomicLong highestTopologyVersion = new AtomicLong(0L); // the highest version in the current group
+        public AtomicLong topologyVersion = new AtomicLong(0L); // the current version of the topology for this instance
+        public AtomicLong assignmentTopologyVersion = new AtomicLong(0L); // the highest version of any assigned tasks
         public ReentrantLock topologyLock = new ReentrantLock();
         public Condition topologyCV = topologyLock.newCondition();
     }
@@ -90,12 +90,15 @@ public class TopologyMetadata {
         }
     }
 
-    public void updateCurrentHighestTopologyVersion(final long highestTopologyVersion) {
-        version.highestTopologyVersion.set(highestTopologyVersion);
+    public void updateCurrentAssignmentTopologyVersion(final long assignmentTopologyVersion) {
+        version.assignmentTopologyVersion.set(assignmentTopologyVersion);
     }
 
-    public long highestTopologyVersion() {
-        return version.highestTopologyVersion.get();
+    /**
+     * @return the version of the assignor responsible for distributing tasks during the last rebalance
+     */
+    public long assignmentTopologyVersion() {
+        return version.assignmentTopologyVersion.get();
     }
 
     public long topologyVersion() {
@@ -175,18 +178,9 @@ public class TopologyMetadata {
     public int getNumStreamThreads(final StreamsConfig config) {
         final int configuredNumStreamThreads = config.getInt(StreamsConfig.NUM_STREAM_THREADS_CONFIG);
 
-        // If the application uses named topologies, it's possible to start up with no topologies at all and only add them later
-        if (builders.isEmpty()) {
-            if (configuredNumStreamThreads != 0) {
-                log.info("Overriding number of StreamThreads to zero for empty topology, "
-                             + "a thread will be added when the first NamedTopology is.");
-            }
-            return 0;
-        }
-
         // If there are named topologies but some are empty, this indicates a bug in user code
         if (hasNamedTopologies()) {
-            if (hasNoNonGlobalTopology() && !hasGlobalTopology()) {
+            if (hasNoNonGlobalTopology()) {
                 log.error("Detected a named topology with no input topics, a named topology may not be empty.");
                 throw new TopologyException("Topology has no stream threads and no global threads, " +
                                                 "must subscribe to at least one source topic or pattern.");

@@ -23,6 +23,7 @@ import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.streams.KafkaClientSupplier;
+import org.apache.kafka.streams.KafkaStreams.State;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
@@ -230,9 +231,10 @@ public class NamedTopologyIntegrationTest {
 
         topology1Builder.stream(inputStream1).selectKey((k, v) -> k).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store"))).toStream().to(outputStream1);
         streams = new KafkaStreamsNamedTopologyWrapper(props, clientSupplier);
-        IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
-        
+        streams.start();
+
         streams.addNamedTopology(topology1Builder.buildNamedTopology(props));
+        IntegrationTestUtils.waitForApplicationState(singletonList(streams), State.RUNNING, Duration.ofSeconds(15));
 
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream1, 3), equalTo(standardOutputData));
     }
@@ -274,7 +276,8 @@ public class NamedTopologyIntegrationTest {
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream1, 3), equalTo(standardOutputData));
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream2, 3), equalTo(standardOutputData));
 
-        // need to make sure that both instances actually did some of this processing of topology-2 -- it's likely
+        // TODO KAFKA-12648: need to make sure that both instances actually did some of this processing of topology-2,
+        //  ie that both joined the group after the new topology was added and then successfully processed records from it
     }
 
     @Test

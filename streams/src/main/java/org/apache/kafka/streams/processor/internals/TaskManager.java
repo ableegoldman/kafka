@@ -941,8 +941,8 @@ public class TaskManager {
         return tasksToCloseDirty;
     }
 
-    public void updateCurrentHighestTopologyVersion(final long highestTopologyVersion) {
-        topologyMetadata.updateCurrentHighestTopologyVersion(highestTopologyVersion);
+    public void updateCurrentAssigmentTopologyVersion(final long assignmentTopologyVersion) {
+        topologyMetadata.updateCurrentAssignmentTopologyVersion(assignmentTopologyVersion);
     }
 
     void maybeCreateTasksFromNewTopologies() {

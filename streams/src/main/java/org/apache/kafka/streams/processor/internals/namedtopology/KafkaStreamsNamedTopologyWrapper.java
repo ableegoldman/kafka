@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Collectors;
 
@@ -45,7 +46,7 @@ import java.util.stream.Collectors;
 @Unstable
 public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
 
-    final Map<String, NamedTopology> nameToTopology = new HashMap<>();
+    final Map<String, NamedTopology> nameToTopology = new ConcurrentHashMap<>();
 
     /**
      * A Kafka Streams application with a single initial NamedTopology
@@ -113,12 +114,6 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
         }
 
         topologyMetadata.registerAndBuildNewTopology(newTopology.internalTopologyBuilder());
-
-        // If there are no topologies yet, there are no StreamThreads, so we must add one
-        if (nameToTopology.isEmpty())  {
-            // TODO KAFKA-12648: use a CV to wait/notify existing threads instead of adding/removing them
-            addStreamThread();
-        }
         nameToTopology.put(newTopology.name(), newTopology);
     }
 
@@ -140,12 +135,6 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
 
         nameToTopology.remove(topologyToRemove);
         topologyMetadata.unregisterTopology(topologyToRemove);
-
-        if (nameToTopology.isEmpty()) {
-            // TODO KAFKA-12648: use a CV to wait/notify existing threads instead of adding/removing them
-            processStreamThread(thread -> removeStreamThread());
-        }
-        // TODO KAFKA-12648: make sure local state from
     }
 
     public String getFullTopologyDescription() {
