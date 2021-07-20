@@ -647,14 +647,8 @@ public class TaskManager {
 
         // Not all tasks will create directories, and there may be directories for tasks we don't currently own,
         // so we consider all tasks that are either owned or on disk. This includes stateless tasks, which should
-        // just have an empty changelogOffsets map. However we should be sure to skip any removed NamedTopologies
-        final Set<TaskId> tasksToReport = union(
-            HashSet::new,
-            lockedTaskDirectories,
-            tasks.tasksPerId().keySet()
-        ).stream().filter(id -> topologyMetadata.isACurrentNamedTopologyOrElseHasNone(id.namedTopology())).collect(Collectors.toSet());
-
-        for (final TaskId id : tasksToReport) {
+        // just have an empty changelogOffsets map.
+        for (final TaskId id : union(HashSet::new, lockedTaskDirectories, tasks.tasksPerId().keySet())) {
             final Task task = tasks.owned(id) ? tasks.task(id) : null;
             // Closed and uninitialized tasks don't have any offsets so we should read directly from the checkpoint
             if (task != null && task.state() != State.CREATED && task.state() != State.CLOSED) {

@@ -27,6 +27,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedSet;
 import java.util.stream.Collectors;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -36,6 +37,8 @@ import static java.util.Collections.emptyMap;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Comparator.comparing;
+import static java.util.Comparator.comparingLong;
+
 import static org.apache.kafka.common.utils.Utils.union;
 import static org.apache.kafka.streams.processor.internals.assignment.SubscriptionInfo.UNKNOWN_OFFSET_SUM;
 
@@ -54,8 +57,6 @@ public class ClientState {
     private final ClientStateTask previousStandbyTasks = new ClientStateTask(null, null);
     private final ClientStateTask revokingActiveTasks = new ClientStateTask(null, new TreeMap<>());
 
-    private final Set<String> supportedNamedTopologies;
-
     private int capacity;
 
     public ClientState() {
@@ -68,7 +69,6 @@ public class ClientState {
 
         taskOffsetSums = new TreeMap<>();
         taskLagTotals = new TreeMap<>();
-        supportedNamedTopologies = new HashSet<>();
         this.capacity = capacity;
     }
 
@@ -80,7 +80,6 @@ public class ClientState {
         this.previousStandbyTasks.taskIds(unmodifiableSet(new TreeSet<>(previousStandbyTasks)));
         this.previousActiveTasks.taskIds(unmodifiableSet(new TreeSet<>(previousActiveTasks)));
         taskOffsetSums = emptyMap();
-        supportedNamedTopologies = new HashSet<>();
         this.taskLagTotals = unmodifiableMap(taskLagTotals);
         this.capacity = capacity;
     }
@@ -326,14 +325,22 @@ public class ClientState {
     public long lagFor(final TaskId task) {
         final Long totalLag = taskLagTotals.get(task);
         if (totalLag == null) {
-            if (supportedNamedTopologies.contains(task.namedTopology())) {
-                throw new IllegalStateException("Tried to lookup lag for unknown task " + task);
-            } else {
-                // Don't throw if we don't recognize the task if it's just from an old/unknown NamedTopology on disk
-                return UNKNOWN_OFFSET_SUM;
-            }
+            throw new IllegalStateException("Tried to lookup lag for unknown task " + task);
         }
         return totalLag;
+    }
+
+    /**
+     * @return the previous tasks assigned to this consumer that have been re-assigned to the client, ordered by lag
+     */
+    public SortedSet<TaskId> previousAndReassignedTasksByLag(final String consumer) {
+        final SortedSet<TaskId> prevTasksByLag = new TreeSet<>(comparingLong(this::lagFor).thenComparing(TaskId::compareTo));
+        for (final TaskId task : prevOwnedStatefulTasksByConsumer(consumer)) {
+            if (assignedActiveTasks.taskIds().contains(task) || assignedStandbyTasks.taskIds().contains(task)) {
+                prevTasksByLag.add(task);
+            }
+        }
+        return prevTasksByLag;
     }
 
     public Set<TaskId> statefulActiveTasks() {

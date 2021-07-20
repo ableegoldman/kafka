@@ -122,6 +122,8 @@ import static org.apache.kafka.streams.processor.internals.assignment.Assignment
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.getInfo;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.namedTopologiesOfTasks;
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.LATEST_SUPPORTED_VERSION;
+
+import static org.easymock.EasyMock.anyLong;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.mock;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -1014,6 +1016,8 @@ public class StreamsPartitionAssignorTest {
         standbyTasks.put(TASK_0_2, mkSet(t3p2));
 
         taskManager.handleAssignment(activeTasks, standbyTasks);
+        EasyMock.expectLastCall();
+        taskManager.updateCurrentAssigmentTopologyVersion(anyLong());
         EasyMock.expectLastCall();
         streamsMetadataState = EasyMock.createStrictMock(StreamsMetadataState.class);
         final Capture<Cluster> capturedCluster = EasyMock.newCapture();

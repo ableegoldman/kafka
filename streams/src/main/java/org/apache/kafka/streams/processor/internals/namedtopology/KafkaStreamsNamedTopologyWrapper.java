@@ -25,7 +25,6 @@ import org.apache.kafka.streams.processor.internals.TopologyMetadata;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;

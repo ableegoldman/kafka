@@ -77,8 +77,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static java.util.Comparator.comparingLong;
 import static java.util.UUID.randomUUID;
+
+import static org.apache.kafka.common.utils.Utils.filterMap;
 import static org.apache.kafka.streams.processor.internals.ClientUtils.fetchCommittedOffsets;
 import static org.apache.kafka.streams.processor.internals.ClientUtils.fetchEndOffsetsFuture;
 import static org.apache.kafka.streams.processor.internals.assignment.StreamsAssignmentProtocolVersions.EARLIEST_PROBEABLE_VERSION;
@@ -248,16 +249,31 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
         handleRebalanceStart(topics);
         uniqueField++;
 
+        final long topologyVersion;
+        final Set<String> currentNamedTopologies;
+        final Map<TaskId, Long> taskOffsetSums;
+        try {
+            taskManager.topologyMetadata().lock();
+
+            topologyVersion = taskManager.topologyMetadata().topologyVersion();
+            currentNamedTopologies = taskManager.topologyMetadata().namedTopologiesView();
+
+            // Filter out any NamedTopologies that are no longer recognized/have been removed
+            taskOffsetSums = filterMap(taskManager.getTaskOffsetSums(), t -> currentNamedTopologies.contains(t.getKey().namedTopology()));
+        } finally {
+            taskManager.topologyMetadata().unlock();
+        }
+
         return new SubscriptionInfo(
             usedSubscriptionMetadataVersion,
             LATEST_SUPPORTED_VERSION,
             taskManager.processId(),
             userEndPoint,
-            taskManager.getTaskOffsetSums(),
+            taskOffsetSums,
             uniqueField,
             assignmentErrorCode.get(),
-            taskManager.topologyMetadata().namedTopologiesView(),
-            taskManager.topologyMetadata().topologyVersion()
+            currentNamedTopologies,
+            topologyVersion
         ).encode();
     }
 
@@ -1057,7 +1073,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             for (final String consumer : consumers) {
                 final List<TaskId> threadAssignment = assignment.get(consumer);
 
-                for (final TaskId task : getPreviousTasksByLag(state, consumer)) {
+                for (final TaskId task : state.previousAndReassignedTasksByLag(consumer)) {
                     if (unassignedStatefulTasks.contains(task)) {
                         if (threadAssignment.size() < minStatefulTasksPerThread) {
                             threadAssignment.add(task);
@@ -1139,12 +1155,6 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
         }
 
         return assignment;
-    }
-
-    private static SortedSet<TaskId> getPreviousTasksByLag(final ClientState state, final String consumer) {
-        final SortedSet<TaskId> prevTasksByLag = new TreeSet<>(comparingLong(state::lagFor).thenComparing(TaskId::compareTo));
-        prevTasksByLag.addAll(state.prevOwnedStatefulTasksByConsumer(consumer));
-        return prevTasksByLag;
     }
 
     private void validateMetadataVersions(final int receivedAssignmentMetadataVersion,

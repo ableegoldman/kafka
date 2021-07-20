@@ -45,6 +45,8 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static java.util.Collections.emptySet;
+
 public class TopologyMetadata {
     private final Logger log = LoggerFactory.getLogger(TopologyMetadata.class);
 
@@ -226,7 +228,7 @@ public class TopologyMetadata {
     }
 
     Set<String> namedTopologiesView() {
-        return Collections.unmodifiableSet(builders.keySet());
+        return hasNamedTopologies() ? Collections.unmodifiableSet(builders.keySet()) : emptySet();
     }
 
     public boolean isACurrentNamedTopologyOrElseHasNone(final String topologyName) {
