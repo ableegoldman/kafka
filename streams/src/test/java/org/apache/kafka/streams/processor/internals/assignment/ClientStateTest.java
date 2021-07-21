@@ -442,7 +442,7 @@ public class ClientStateTest {
         assertThrows(IllegalStateException.class, () -> client.lagFor(NAMED_TASK_T1_0_0));
 
         client.assignActive(NAMED_TASK_T0_0_0);
-        assertThat(client.previousAndReassignedTasksByLag("c1"), equalTo(mkSortedSet(NAMED_TASK_T0_0_0)));
+        assertThat(client.prevTasksByLag("c1"), equalTo(mkSortedSet(NAMED_TASK_T0_0_0)));
     }
 
     @Test

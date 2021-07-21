@@ -331,13 +331,15 @@ public class ClientState {
     }
 
     /**
-     * @return the previous tasks assigned to this consumer that have been re-assigned to the client, ordered by lag
+     * @return the previous tasks assigned to this consumer ordered by lag, filtered for any tasks that don't exist in this assignment
      */
-    public SortedSet<TaskId> previousAndReassignedTasksByLag(final String consumer) {
+    public SortedSet<TaskId> prevTasksByLag(final String consumer) {
         final SortedSet<TaskId> prevTasksByLag = new TreeSet<>(comparingLong(this::lagFor).thenComparing(TaskId::compareTo));
         for (final TaskId task : prevOwnedStatefulTasksByConsumer(consumer)) {
-            if (assignedActiveTasks.taskIds().contains(task) || assignedStandbyTasks.taskIds().contains(task)) {
+            if (taskLagTotals.containsKey(task)) {
                 prevTasksByLag.add(task);
+            } else {
+                LOG.debug("Skipping previous task{} since it's not part of the current assignment", task);
             }
         }
         return prevTasksByLag;

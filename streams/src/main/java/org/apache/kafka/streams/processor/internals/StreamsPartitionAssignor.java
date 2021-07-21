@@ -1073,7 +1073,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             for (final String consumer : consumers) {
                 final List<TaskId> threadAssignment = assignment.get(consumer);
 
-                for (final TaskId task : state.previousAndReassignedTasksByLag(consumer)) {
+                for (final TaskId task : state.prevTasksByLag(consumer)) {
                     if (unassignedStatefulTasks.contains(task)) {
                         if (threadAssignment.size() < minStatefulTasksPerThread) {
                             threadAssignment.add(task);
