@@ -188,13 +188,60 @@ public class NamedTopologyIntegrationTest {
     }
 
     @Test
-    public void shouldProcessMultipleIdenticalNamedTopologiesWithPersistentStateStores() throws Exception {
+    public void shouldPrefixAllInternalTopicNamesWithNamedTopology() throws Exception {
+        final String countTopologyName = "count-topology";
+        final String fkjTopologyName = "FKJ-topology";
+
+        final NamedTopologyStreamsBuilder countBuilder = new NamedTopologyStreamsBuilder(countTopologyName);
+        countBuilder.stream(inputStream1).selectKey((k, v) -> k).groupByKey().count();
+
+        final NamedTopologyStreamsBuilder fkjBuilder = new NamedTopologyStreamsBuilder(fkjTopologyName);
+
+        final UniqueTopicSerdeScope serdeScope = new UniqueTopicSerdeScope();
+        final KTable<Integer, String> left = fkjBuilder.table(
+            inputStream2,
+            Consumed.with(serdeScope.decorateSerde(Serdes.Integer(), props, true),
+                          serdeScope.decorateSerde(Serdes.String(), props, false))
+        );
+        final KTable<Integer, String> right = fkjBuilder.table(
+            inputStream3,
+            Consumed.with(serdeScope.decorateSerde(Serdes.Integer(), props, true),
+                          serdeScope.decorateSerde(Serdes.String(), props, false))
+        );
+        left.join(
+            right,
+            value -> Integer.parseInt(value.split("\\|")[1]),
+            (value1, value2) -> "(" + value1 + "," + value2 + ")",
+            Materialized.with(null, serdeScope.decorateSerde(Serdes.String(), props, false)));
+
+
+        streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(fkjBuilder, countBuilder), props, clientSupplier);
+        IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
+
+        final String countTopicPrefix = appId + "-" + countTopologyName;
+        final String fkjTopicPrefix = appId + "-" + fkjTopologyName;
+        final  Set<String> internalTopics  = CLUSTER.getAllTopicsInCluster().stream().filter(t ->
+                                                                                                 t.endsWith("-repartition") || t.endsWith("-changelog") || t.endsWith("-topic"))
+            .collect(Collectors.toSet());
+        assertThat(internalTopics, is(mkSet(
+            countTopicPrefix + "-KSTREAM-AGGREGATE-STATE-STORE-0000000002-repartition",
+            countTopicPrefix + "-KSTREAM-AGGREGATE-STATE-STORE-0000000002-changelog",
+            fkjTopicPrefix + "-KTABLE-FK-JOIN-SUBSCRIPTION-REGISTRATION-0000000006-topic",
+            fkjTopicPrefix + "-KTABLE-FK-JOIN-SUBSCRIPTION-RESPONSE-0000000014-topic",
+            fkjTopicPrefix + "-KTABLE-FK-JOIN-SUBSCRIPTION-STATE-STORE-0000000010-changelog",
+            fkjTopicPrefix + "-" + inputStream2 + "-STATE-STORE-0000000000-changelog",
+            fkjTopicPrefix + "-" + inputStream3 + "-STATE-STORE-0000000003-changelog"))
+        );
+    }
+
+    @Test
+    public void shouldProcessMultipleIdenticalNamedTopologiesWithInMemoryAndPersistentStateStores() throws Exception {
         produceToInputTopics(inputStream1, standardInputData);
         produceToInputTopics(inputStream2, standardInputData);
         produceToInputTopics(inputStream3, standardInputData);
 
         topology1Builder.stream(inputStream1).selectKey((k, v) -> k).groupByKey().count(Materialized.as(Stores.persistentKeyValueStore("store"))).toStream().to(outputStream1);
-        topology2Builder.stream(inputStream2).selectKey((k, v) -> k).groupByKey().count(Materialized.as(Stores.persistentKeyValueStore("store"))).toStream().to(outputStream2);
+        topology2Builder.stream(inputStream2).selectKey((k, v) -> k).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store"))).toStream().to(outputStream2);
         topology3Builder.stream(inputStream3).selectKey((k, v) -> k).groupByKey().count(Materialized.as(Stores.persistentKeyValueStore("store"))).toStream().to(outputStream3);
         streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(topology1Builder, topology2Builder, topology3Builder), props, clientSupplier);
         IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
@@ -207,22 +254,15 @@ public class NamedTopologyIntegrationTest {
     }
 
     @Test
-    public void shouldProcessMultipleIdenticalNamedTopologiesWithInMemoryStateStores() throws Exception {
+    public void shouldAddNamedTopologyToUnstartedApplicationWithEmptyInitialTopology() throws Exception {
         produceToInputTopics(inputStream1, standardInputData);
-        produceToInputTopics(inputStream2, standardInputData);
-        produceToInputTopics(inputStream3, standardInputData);
 
         topology1Builder.stream(inputStream1).selectKey((k, v) -> k).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store"))).toStream().to(outputStream1);
-        topology2Builder.stream(inputStream2).selectKey((k, v) -> k).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store"))).toStream().to(outputStream2);
-        topology3Builder.stream(inputStream3).selectKey((k, v) -> k).groupByKey().count(Materialized.as(Stores.inMemoryKeyValueStore("store"))).toStream().to(outputStream3);
-        streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(topology1Builder, topology2Builder, topology3Builder), props, clientSupplier);
+        streams = new KafkaStreamsNamedTopologyWrapper(props, clientSupplier);
+        streams.addNamedTopology(topology1Builder.buildNamedTopology(props));
         IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
 
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream1, 3), equalTo(standardOutputData));
-        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream2, 3), equalTo(standardOutputData));
-        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream3, 3), equalTo(standardOutputData));
-
-        assertThat(CLUSTER.getAllTopicsInCluster().containsAll(asList(storeChangelog1, storeChangelog2, storeChangelog3)), is(true));
     }
     
     @Test
@@ -256,7 +296,7 @@ public class NamedTopologyIntegrationTest {
     }
 
     @Test
-    public void shouldAddNamedTopologyToRunningApplicationWithSingleInitialNamedTopologyWithMulipleNodes() throws Exception {
+    public void shouldAddNamedTopologyToRunningApplicationWithMulipleNodes() throws Exception {
         produceToInputTopics(inputStream1, standardInputData);
         produceToInputTopics(inputStream2, standardInputData);
 
@@ -348,53 +388,6 @@ public class NamedTopologyIntegrationTest {
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream1, 3), equalTo(standardOutputData));
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream2, 3), equalTo(standardOutputData));
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, outputStream3, 3), equalTo(standardOutputData));
-    }
-
-    @Test
-    public void shouldPrefixAllInternalTopicNamesWithNamedTopology() throws Exception {
-        final String countTopologyName = "count-topology";
-        final String fkjTopologyName = "FKJ-topology";
-
-        final NamedTopologyStreamsBuilder countBuilder = new NamedTopologyStreamsBuilder(countTopologyName);
-        countBuilder.stream(inputStream1).selectKey((k, v) -> k).groupByKey().count();
-
-        final NamedTopologyStreamsBuilder fkjBuilder = new NamedTopologyStreamsBuilder(fkjTopologyName);
-
-        final UniqueTopicSerdeScope serdeScope = new UniqueTopicSerdeScope();
-        final KTable<Integer, String> left = fkjBuilder.table(
-            inputStream2,
-            Consumed.with(serdeScope.decorateSerde(Serdes.Integer(), props, true),
-                          serdeScope.decorateSerde(Serdes.String(), props, false))
-        );
-        final KTable<Integer, String> right = fkjBuilder.table(
-            inputStream3,
-            Consumed.with(serdeScope.decorateSerde(Serdes.Integer(), props, true),
-                          serdeScope.decorateSerde(Serdes.String(), props, false))
-        );
-        left.join(
-            right,
-            value -> Integer.parseInt(value.split("\\|")[1]),
-            (value1, value2) -> "(" + value1 + "," + value2 + ")",
-            Materialized.with(null, serdeScope.decorateSerde(Serdes.String(), props, false)));
-
-
-        streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(fkjBuilder, countBuilder), props, clientSupplier);
-        IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
-
-        final String countTopicPrefix = appId + "-" + countTopologyName;
-        final String fkjTopicPrefix = appId + "-" + fkjTopologyName;
-        final  Set<String> internalTopics  = CLUSTER.getAllTopicsInCluster().stream().filter(t ->
-            t.endsWith("-repartition") || t.endsWith("-changelog") || t.endsWith("-topic"))
-            .collect(Collectors.toSet());
-        assertThat(internalTopics, is(mkSet(
-            countTopicPrefix + "-KSTREAM-AGGREGATE-STATE-STORE-0000000002-repartition",
-            countTopicPrefix + "-KSTREAM-AGGREGATE-STATE-STORE-0000000002-changelog",
-            fkjTopicPrefix + "-KTABLE-FK-JOIN-SUBSCRIPTION-REGISTRATION-0000000006-topic",
-            fkjTopicPrefix + "-KTABLE-FK-JOIN-SUBSCRIPTION-RESPONSE-0000000014-topic",
-            fkjTopicPrefix + "-KTABLE-FK-JOIN-SUBSCRIPTION-STATE-STORE-0000000010-changelog",
-            fkjTopicPrefix + "-" + inputStream2 + "-STATE-STORE-0000000000-changelog",
-            fkjTopicPrefix + "-" + inputStream3 + "-STATE-STORE-0000000003-changelog"))
-        );
     }
 
     private void produceToInputTopics(final String topic, final Collection<KeyValue<String, Long>> records) {

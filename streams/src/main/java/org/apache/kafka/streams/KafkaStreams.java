@@ -236,6 +236,10 @@ public class KafkaStreams implements AutoCloseable {
             return equals(RUNNING) || equals(REBALANCING);
         }
 
+        public boolean isShutDown() {
+            return equals(PENDING_SHUTDOWN) || equals(PENDING_ERROR) || equals(NOT_RUNNING) || equals(ERROR);
+        }
+
         public boolean isValidTransition(final State newState) {
             return validTransitions.contains(newState.ordinal());
         }
@@ -334,6 +338,12 @@ public class KafkaStreams implements AutoCloseable {
     protected boolean isRunningOrRebalancing() {
         synchronized (stateLock) {
             return state.isRunningOrRebalancing();
+        }
+    }
+
+    protected boolean isShutDown() {
+        synchronized (stateLock) {
+            return state.isShutDown();
         }
     }
 

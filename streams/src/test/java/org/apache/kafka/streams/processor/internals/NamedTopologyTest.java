@@ -103,15 +103,15 @@ public class NamedTopologyTest {
         final NamedTopology topology2 = builder2.buildNamedTopology(props);
         final NamedTopology topology3 = builder3.buildNamedTopology(props);
         streams = new KafkaStreamsNamedTopologyWrapper(asList(topology1, topology2, topology3), props, clientSupplier);
-        assertThat(streams.getTopologyByName("topology-1"), equalTo(topology1));
-        assertThat(streams.getTopologyByName("topology-2"), equalTo(topology2));
-        assertThat(streams.getTopologyByName("topology-3"), equalTo(topology3));
+        assertThat(streams.getTopologyByName("topology-1").get(), equalTo(topology1));
+        assertThat(streams.getTopologyByName("topology-2").get(), equalTo(topology2));
+        assertThat(streams.getTopologyByName("topology-3").get(), equalTo(topology3));
     }
 
     @Test
-    public void shouldThrowIllegalArgumentWhenLookingUpNonExistentTopologyByName() {
+    public void shouldReturnEmptyWhenLookingUpNonExistentTopologyByName() {
         streams = new KafkaStreamsNamedTopologyWrapper(builder1.buildNamedTopology(props), props, clientSupplier);
-        assertThrows(IllegalArgumentException.class, () -> streams.getTopologyByName("non-existent-topology"));
+        assertThat(streams.getTopologyByName("non-existent-topology"), equalTo(false));
     }
 
     @Test

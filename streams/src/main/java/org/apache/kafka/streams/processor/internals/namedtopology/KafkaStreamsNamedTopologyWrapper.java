@@ -26,6 +26,7 @@ import org.apache.kafka.streams.processor.internals.TopologyMetadata;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -90,12 +91,11 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
         }
     }
 
-    public NamedTopology getTopologyByName(final String name) {
-        if (nameToTopology.containsKey(name)) {
-            return nameToTopology.get(name);
-        } else {
-            throw new IllegalArgumentException("Unable to locate a NamedTopology called " + name);
-        }
+    /**
+     * @return the NamedTopology for the specific name, or Optional.empty() if the application has no NamedTopology of that name
+     */
+    public Optional<NamedTopology> getTopologyByName(final String name) {
+        return Optional.ofNullable(nameToTopology.get(name));
     }
 
     /**
@@ -108,7 +108,7 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
      * @throws TopologyException        if this topology subscribes to any input topics or pattern already in use
      */
     public void addNamedTopology(final NamedTopology newTopology) {
-        if (!isRunningOrRebalancing()) {
+        if (isShutDown()) {
             throw new IllegalStateException("Cannot add a NamedTopology while the state is " + super.state);
         }
 
