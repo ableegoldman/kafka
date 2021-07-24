@@ -72,8 +72,6 @@ public class NamedTopologyIntegrationTest {
     //  1) full test coverage for add/removeNamedTopology, covering:
     //      - the "last topology removed" case
     //      - test using multiple clients, with standbys
-    //      - test the cleanUpNamedTopology() API
-
 
     private static final int NUM_BROKERS = 1;
 

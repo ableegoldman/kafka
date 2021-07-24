@@ -258,10 +258,14 @@ public class StateDirectory {
             if (!hasNamedTopologies) {
                 throw new IllegalStateException("Tried to lookup taskId with named topology, but StateDirectory thinks hasNamedTopologies = false");
             }
-            return new File(stateDir, "__" + namedTopology + "__");
+            return new File(stateDir, getNamedTopologyDirName(namedTopology));
         } else {
             return stateDir;
         }
+    }
+
+    private String getNamedTopologyDirName(final String topologyName) {
+        return "__" + topologyName + "__";
     }
 
     /**
@@ -523,7 +527,7 @@ public class StateDirectory {
      * @throws StreamsException if cleanup failed
      */
     public void clearLocalStateForNamedTopology(final String topologyName) {
-        final File namedTopologyDir = new File(stateDir, topologyName);
+        final File namedTopologyDir = new File(stateDir, getNamedTopologyDirName(topologyName));
         if (!namedTopologyDir.exists() || !namedTopologyDir.isDirectory()) {
             log.debug("Tried to clear out the local state for NamedTopology {} but none was found", topologyName);
         }
