@@ -151,7 +151,7 @@ public class KafkaStreams implements AutoCloseable {
     private final Metrics metrics;
     private final StreamsConfig config;
     protected final List<StreamThread> threads;
-    private final StateDirectory stateDirectory;
+    protected final StateDirectory stateDirectory;
     private final StreamsMetadataState streamsMetadataState;
     private final ScheduledExecutorService stateDirCleaner;
     private final ScheduledExecutorService rocksDBMetricsRecordingService;
@@ -236,7 +236,7 @@ public class KafkaStreams implements AutoCloseable {
             return equals(RUNNING) || equals(REBALANCING);
         }
 
-        public boolean isShutDown() {
+        public boolean hasStartedOrFinishedShuttingDown() {
             return equals(PENDING_SHUTDOWN) || equals(PENDING_ERROR) || equals(NOT_RUNNING) || equals(ERROR);
         }
 
@@ -341,9 +341,9 @@ public class KafkaStreams implements AutoCloseable {
         }
     }
 
-    protected boolean isShutDown() {
+    protected boolean hasStartedOrFinishedShuttingDown() {
         synchronized (stateLock) {
-            return state.isShutDown();
+            return state.hasStartedOrFinishedShuttingDown();
         }
     }
 

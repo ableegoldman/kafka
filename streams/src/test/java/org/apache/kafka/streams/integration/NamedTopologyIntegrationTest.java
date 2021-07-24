@@ -72,6 +72,8 @@ public class NamedTopologyIntegrationTest {
     //  1) full test coverage for add/removeNamedTopology, covering:
     //      - the "last topology removed" case
     //      - test using multiple clients, with standbys
+    //      - test the cleanUpNamedTopology() API
+
 
     private static final int NUM_BROKERS = 1;
 
@@ -214,14 +216,14 @@ public class NamedTopologyIntegrationTest {
             (value1, value2) -> "(" + value1 + "," + value2 + ")",
             Materialized.with(null, serdeScope.decorateSerde(Serdes.String(), props, false)));
 
-
         streams = new KafkaStreamsNamedTopologyWrapper(buildNamedTopologies(fkjBuilder, countBuilder), props, clientSupplier);
         IntegrationTestUtils.startApplicationAndWaitUntilRunning(singletonList(streams), Duration.ofSeconds(15));
 
         final String countTopicPrefix = appId + "-" + countTopologyName;
         final String fkjTopicPrefix = appId + "-" + fkjTopologyName;
-        final  Set<String> internalTopics  = CLUSTER.getAllTopicsInCluster().stream().filter(t ->
-                                                                                                 t.endsWith("-repartition") || t.endsWith("-changelog") || t.endsWith("-topic"))
+        final  Set<String> internalTopics = CLUSTER
+            .getAllTopicsInCluster().stream()
+            .filter(t -> t.endsWith("-repartition") || t.endsWith("-changelog") || t.endsWith("-topic"))
             .collect(Collectors.toSet());
         assertThat(internalTopics, is(mkSet(
             countTopicPrefix + "-KSTREAM-AGGREGATE-STATE-STORE-0000000002-repartition",

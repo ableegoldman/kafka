@@ -231,13 +231,6 @@ public class TopologyMetadata {
         return hasNamedTopologies() ? Collections.unmodifiableSet(builders.keySet()) : emptySet();
     }
 
-    public boolean isACurrentNamedTopologyOrElseHasNone(final String topologyName) {
-        if (topologyName == null) {
-            return true;
-        }
-        return builders.containsKey(topologyName);
-    }
-
     public boolean hasGlobalTopology() {
         return evaluateConditionIsTrueForAnyBuilders(InternalTopologyBuilder::hasGlobalStores);
     }

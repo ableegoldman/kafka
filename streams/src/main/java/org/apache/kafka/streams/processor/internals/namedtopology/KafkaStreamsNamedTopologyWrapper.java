@@ -20,7 +20,9 @@ import org.apache.kafka.common.annotation.InterfaceStability.Unstable;
 import org.apache.kafka.streams.KafkaClientSupplier;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.TopologyException;
+import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.internals.TopologyMetadata;
 
 import java.util.Collection;
@@ -108,7 +110,7 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
      * @throws TopologyException        if this topology subscribes to any input topics or pattern already in use
      */
     public void addNamedTopology(final NamedTopology newTopology) {
-        if (isShutDown()) {
+        if (hasStartedOrFinishedShuttingDown()) {
             throw new IllegalStateException("Cannot add a NamedTopology while the state is " + super.state);
         }
 
@@ -134,6 +136,26 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
 
         nameToTopology.remove(topologyToRemove);
         topologyMetadata.unregisterTopology(topologyToRemove);
+    }
+
+    /**
+     * Do a clean up of the local state directory for this NamedTopology by deleting all data with regard to the
+     * @link StreamsConfig#APPLICATION_ID_CONFIG application ID} in the ({@link StreamsConfig#STATE_DIR_CONFIG})
+     * <p>
+     * May be called while the Streams is in any state, but only on a {@link NamedTopology} that has already been
+     * removed via {@link #removeNamedTopology(String)}.
+     * <p>
+     * Calling this method triggers a restore of local {@link StateStore}s for this {@link NamedTopology} if it is
+     * ever re-added via {@link #addNamedTopology(NamedTopology)}.
+     *
+     * @throws IllegalStateException if this {@code NamedTopology} hasn't been removed
+     * @throws StreamsException if cleanup failed
+     */
+    public void cleanUpNamedTopology(final String name) {
+        if (getTopologyByName(name).isPresent()) {
+            throw new IllegalStateException("Can't clean up local state for an active NamedTopology");
+        }
+        stateDirectory.clearLocalStateForNamedTopology(name);
     }
 
     public String getFullTopologyDescription() {

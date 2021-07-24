@@ -517,6 +517,24 @@ public class StateDirectory {
         return firstException.get();
     }
 
+    /**
+     * Clears out any local state found for the given NamedTopology after it was removed
+     *
+     * @throws StreamsException if cleanup failed
+     */
+    public void clearLocalStateForNamedTopology(final String topologyName) {
+        final File namedTopologyDir = new File(stateDir, topologyName);
+        if (!namedTopologyDir.exists() || !namedTopologyDir.isDirectory()) {
+            log.debug("Tried to clear out the local state for NamedTopology {} but none was found", topologyName);
+        }
+        try {
+            Utils.delete(namedTopologyDir);
+        } catch (final IOException e) {
+            log.error("Hit an unexpected error while clearing local state for NamedTopology {}", topologyName);
+            throw new StreamsException("Unable to delete state for the named topology " + topologyName);
+        }
+    }
+
     private void cleanStateAndTaskDirectoriesCalledByUser() throws Exception {
         if (!lockedTasksToOwner.isEmpty()) {
             log.warn("Found some still-locked task directories when user requested to cleaning up the state, "
