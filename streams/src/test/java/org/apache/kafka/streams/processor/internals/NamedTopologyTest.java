@@ -111,7 +111,7 @@ public class NamedTopologyTest {
     @Test
     public void shouldReturnEmptyWhenLookingUpNonExistentTopologyByName() {
         streams = new KafkaStreamsNamedTopologyWrapper(builder1.buildNamedTopology(props), props, clientSupplier);
-        assertThat(streams.getTopologyByName("non-existent-topology"), equalTo(false));
+        assertThat(streams.getTopologyByName("non-existent-topology").isPresent(), equalTo(false));
     }
 
     @Test
