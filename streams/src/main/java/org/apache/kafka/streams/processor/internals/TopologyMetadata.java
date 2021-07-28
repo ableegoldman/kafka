@@ -150,7 +150,9 @@ public class TopologyMetadata {
             lock();
             version.topologyVersion.incrementAndGet();
             log.info("Removing NamedTopology {}, latest topology version is {}", topologyName, version.topologyVersion.get());
-            builders.remove(topologyName);
+            final InternalTopologyBuilder removedBuilder = builders.remove(topologyName);
+            removedBuilder.fullSourceTopicNames().forEach(allInputTopics::remove);
+            removedBuilder.allSourcePatternStrings().forEach(allInputTopics::remove);
             version.topologyCV.signalAll();
         } finally {
             unlock();
