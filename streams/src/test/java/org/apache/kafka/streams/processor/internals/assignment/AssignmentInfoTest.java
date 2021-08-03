@@ -200,7 +200,14 @@ public class AssignmentInfoTest {
     @Test
     public void shouldEncodeAndDecodeVersion10WithNamedTopologies() {
         final AssignmentInfo info =
-            new AssignmentInfo(10, LATEST_SUPPORTED_VERSION, NAMED_ACTIVE_TASKS, NAMED_STANDBY_TASKS, activeAssignment, standbyAssignment, 2);
+            new AssignmentInfo(10, LATEST_SUPPORTED_VERSION, NAMED_ACTIVE_TASKS, NAMED_STANDBY_TASKS, activeAssignment, standbyAssignment, 2, Collections.emptySet());
+        assertEquals(info, AssignmentInfo.decode(info.encode()));
+    }
+
+    @Test
+    public void shouldEncodeAndDecodeVersion11() {
+        final AssignmentInfo info =
+            new AssignmentInfo(11,LATEST_SUPPORTED_VERSION, NAMED_ACTIVE_TASKS, NAMED_STANDBY_TASKS, activeAssignment, standbyAssignment, 2, namedTopologiesOfTasks(NAMED_ACTIVE_TASKS, NAMED_STANDBY_TASKS.keySet()));
         assertEquals(info, AssignmentInfo.decode(info.encode()));
     }
 

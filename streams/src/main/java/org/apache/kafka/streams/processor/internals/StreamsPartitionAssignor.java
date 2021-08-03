@@ -255,7 +255,8 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             userEndPoint,
             taskManager.getTaskOffsetSums(),
             uniqueField,
-            assignmentErrorCode.get()
+            assignmentErrorCode.get(),
+            currentNamedTopologies
         ).encode();
     }
 
@@ -305,6 +306,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
         final Map<UUID, ClientMetadata> clientMetadataMap = new HashMap<>();
         final Set<TopicPartition> allOwnedPartitions = new HashSet<>();
 
+        Set<String> latestNamedTopologies = new HashSet<>();
         int minReceivedMetadataVersion = LATEST_SUPPORTED_VERSION;
         int minSupportedMetadataVersion = LATEST_SUPPORTED_VERSION;
 
