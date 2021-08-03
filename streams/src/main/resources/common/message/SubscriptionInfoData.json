@@ -65,6 +65,11 @@
       "name": "errorCode",
       "versions": "9+",
       "type": "int32"
+    },
+    {
+      "name": "supportedNamedTopologies",
+      "versions": "11+",
+      "type": "[]string"
     }
   ],
   "commonStructs": [
