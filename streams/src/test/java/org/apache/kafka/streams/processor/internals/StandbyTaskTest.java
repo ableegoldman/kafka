@@ -610,7 +610,6 @@ public class StandbyTaskTest {
             Collections.singleton(partition),
             topology,
             new TopologyConfig(config, new Properties()).getTaskConfig(),
-            StreamThread.eosEnabled(config),
             streamsMetrics,
             stateManager,
             stateDirectory,
