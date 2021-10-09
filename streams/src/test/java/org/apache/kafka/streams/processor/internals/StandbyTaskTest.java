@@ -578,7 +578,7 @@ public class StandbyTaskTest {
     }
 
     @Test
-    public void shouldCLearTaskTimeout() {
+    public void shouldClearTaskTimeout() {
         EasyMock.replay(stateManager);
 
         task = createStandbyTask();
@@ -608,7 +608,7 @@ public class StandbyTaskTest {
             taskId,
             Collections.singleton(partition),
             topology,
-            new TopologyConfig(null, config, new Properties()).getTaskConfig(),
+            new TopologyConfig(config).getTaskConfig(),
             streamsMetrics,
             stateManager,
             stateDirectory,
