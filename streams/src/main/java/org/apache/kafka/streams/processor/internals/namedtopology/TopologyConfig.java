@@ -27,6 +27,7 @@ import org.apache.kafka.streams.processor.internals.StreamThread;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.Map;
 import java.util.Properties;
 import java.util.function.Supplier;
 
@@ -42,6 +43,8 @@ import static org.apache.kafka.streams.StreamsConfig.MAX_TASK_IDLE_MS_CONFIG;
 import static org.apache.kafka.streams.StreamsConfig.MAX_TASK_IDLE_MS_DOC;
 import static org.apache.kafka.streams.StreamsConfig.TASK_TIMEOUT_MS_CONFIG;
 import static org.apache.kafka.streams.StreamsConfig.TASK_TIMEOUT_MS_DOC;
+import static org.apache.kafka.streams.StreamsConfig.WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_CONFIG;
+import static org.apache.kafka.streams.StreamsConfig.WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_DOC;
 
 /**
  * Streams configs that apply at the topology level. The values in the {@link StreamsConfig} parameter of the
@@ -82,7 +85,12 @@ public class TopologyConfig extends AbstractConfig {
                      Type.LONG,
                      null,
                      Importance.MEDIUM,
-                     TASK_TIMEOUT_MS_DOC);
+                     TASK_TIMEOUT_MS_DOC)
+            .define(WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_CONFIG,
+                    Type.LONG,
+                    24 * 60 * 60 * 1000L,
+                    Importance.LOW,
+                    WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_DOC);
     }
     private final Logger log = LoggerFactory.getLogger(TopologyConfig.class);
 
@@ -96,6 +104,7 @@ public class TopologyConfig extends AbstractConfig {
     public final long cacheSize;
     public final long maxTaskIdleMs;
     public final long taskTimeoutMs;
+    public final long windowstoreChangelogAdditionalRetentionMs;
     public final Supplier<TimestampExtractor> timestampExtractorSupplier;
     public final Supplier<DeserializationExceptionHandler> deserializationExceptionHandlerSupplier;
 
@@ -140,6 +149,14 @@ public class TopologyConfig extends AbstractConfig {
             taskTimeoutMs = globalAppConfigs.getLong(TASK_TIMEOUT_MS_CONFIG);
         }
 
+        if (isTopologyOverride(WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_CONFIG, topologyOverrides)) {
+            windowstoreChangelogAdditionalRetentionMs = getLong(WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_CONFIG);
+            log.info("Topology {} is overriding {} to {}",
+                     topologyName, WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_CONFIG, windowstoreChangelogAdditionalRetentionMs);
+        } else {
+            windowstoreChangelogAdditionalRetentionMs = globalAppConfigs.getLong(WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_CONFIG);
+        }
+
         if (isTopologyOverride(DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG, topologyOverrides)) {
             timestampExtractorSupplier = () -> getConfiguredInstance(DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG, TimestampExtractor.class);
             log.info("Topology {} is overriding {} to {}", topologyName, DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG, getClass(DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG));
@@ -178,6 +195,14 @@ public class TopologyConfig extends AbstractConfig {
             deserializationExceptionHandlerSupplier.get(),
             eosEnabled
         );
+    }
+
+    public static class TopologyConfigs {
+        public final Map<String, TopologyConfig> topologyNameToConfigs;
+
+        public TopologyConfigs(final Map<String, TopologyConfig> topologyNameToConfigs) {
+            this.topologyNameToConfigs = topologyNameToConfigs;
+        }
     }
 
     public static class TaskConfig {

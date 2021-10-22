@@ -27,8 +27,12 @@ import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.StreamsConfig.InternalConfig;
 import org.apache.kafka.streams.processor.internals.ClientUtils;
 import org.apache.kafka.streams.processor.internals.InternalTopicManager;
+import org.apache.kafka.streams.processor.internals.namedtopology.TopologyConfig;
+import org.apache.kafka.streams.processor.internals.namedtopology.TopologyConfig.TopologyConfigs;
+
 import org.slf4j.Logger;
 
+import java.util.Collections;
 import java.util.Map;
 
 import static org.apache.kafka.common.utils.Utils.getHost;
@@ -45,6 +49,7 @@ public final class AssignorConfiguration {
 
     private final StreamsConfig streamsConfig;
     private final Map<String, ?> internalConfigs;
+    private final TopologyConfigs topologyConfigs;
 
     public AssignorConfiguration(final Map<String, ?> configs) {
         // NOTE: If you add a new config to pass through to here, be sure to test it in a real
@@ -83,6 +88,23 @@ public final class AssignorConfiguration {
                 taskAssignorClass = HighAvailabilityTaskAssignor.class.getName();
             } else {
                 taskAssignorClass = o;
+            }
+        }
+
+        {
+            final Object o = internalConfigs.get(InternalConfig.TOPOLOGY_CONFIGS);
+            if (o == null) {
+                topologyConfigs = new TopologyConfigs(Collections.emptyMap());
+            } else {
+
+                if (!(o instanceof TopologyConfigs)) {
+                    final KafkaException fatalException = new KafkaException(
+                        String.format("%s is not an instance of %s", o.getClass().getName(), TopologyConfigs.class.getName())
+                    );
+                    log.error(fatalException.getMessage(), fatalException);
+                    throw fatalException;
+                }
+                topologyConfigs = (TopologyConfigs) o;
             }
         }
     }
@@ -183,7 +205,7 @@ public final class AssignorConfiguration {
     }
 
     public InternalTopicManager internalTopicManager() {
-        return new InternalTopicManager(referenceContainer.time, referenceContainer.adminClient, streamsConfig);
+        return new InternalTopicManager(referenceContainer.time, referenceContainer.adminClient, streamsConfig, topologyConfigs);
     }
 
     public CopartitionedTopicsEnforcer copartitionedTopicsEnforcer() {
@@ -220,6 +242,23 @@ public final class AssignorConfiguration {
         }
 
         return (AssignmentListener) o;
+    }
+
+    public TopologyConfigs topologyConfigs() {
+        final Object o = internalConfigs.get(InternalConfig.TOPOLOGY_CONFIGS);
+        if (o == null) {
+            return new TopologyConfigs(Collections.emptyMap());
+        }
+
+        if (!(o instanceof TopologyConfigs)) {
+            final KafkaException fatalException = new KafkaException(
+                String.format("%s is not an instance of %s", o.getClass().getName(), TopologyConfigs.class.getName())
+            );
+            log.error(fatalException.getMessage(), fatalException);
+            throw fatalException;
+        }
+
+        return (TopologyConfigs) o;
     }
 
     public interface AssignmentListener {

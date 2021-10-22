@@ -43,6 +43,8 @@ import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.internals.ClientUtils.QuietConsumerConfig;
+import org.apache.kafka.streams.processor.internals.namedtopology.TopologyConfig.TopologyConfigs;
+
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -53,6 +55,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -71,7 +74,7 @@ public class InternalTopicManager {
     private final Admin adminClient;
 
     private final short replicationFactor;
-    private final long windowChangeLogAdditionalRetention;
+    private final Map<String, Long> windowChangeLogAdditionalRetentionPerTopology;
     private final long retryBackOffMs;
     private final long retryTimeoutMs;
 
@@ -79,7 +82,8 @@ public class InternalTopicManager {
 
     public InternalTopicManager(final Time time,
                                 final Admin adminClient,
-                                final StreamsConfig streamsConfig) {
+                                final StreamsConfig streamsConfig,
+                                final TopologyConfigs topologyConfigs) {
         this.time = time;
         this.adminClient = adminClient;
 
@@ -87,7 +91,7 @@ public class InternalTopicManager {
         log = logContext.logger(getClass());
 
         replicationFactor = streamsConfig.getInt(StreamsConfig.REPLICATION_FACTOR_CONFIG).shortValue();
-        windowChangeLogAdditionalRetention = streamsConfig.getLong(StreamsConfig.WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_CONFIG);
+        windowChangeLogAdditionalRetentionPerTopology = topologyConfigs.topologyNameToConfigs.entrySet().stream().collect(Collectors.toMap(Entry::getKey, t -> t.getValue().windowstoreChangelogAdditionalRetentionMs));
         retryBackOffMs = streamsConfig.getLong(StreamsConfig.RETRY_BACKOFF_MS_CONFIG);
         final Map<String, Object> consumerConfig = streamsConfig.getMainConsumerConfigs("dummy", "dummy", -1);
         // need to add mandatory configs; otherwise `QuietConsumerConfig` throws
@@ -98,8 +102,8 @@ public class InternalTopicManager {
         log.debug("Configs:" + Utils.NL +
             "\t{} = {}" + Utils.NL +
             "\t{} = {}",
-            StreamsConfig.REPLICATION_FACTOR_CONFIG, replicationFactor,
-            StreamsConfig.WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_CONFIG, windowChangeLogAdditionalRetention);
+                  StreamsConfig.REPLICATION_FACTOR_CONFIG, replicationFactor,
+                  StreamsConfig.WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_CONFIG, windowChangeLogAdditionalRetentionPerTopology);
 
         for (final Map.Entry<String, Object> entry : streamsConfig.originalsWithPrefix(StreamsConfig.TOPIC_PREFIX).entrySet()) {
             if (entry.getValue() != null) {
@@ -310,7 +314,7 @@ public class InternalTopicManager {
             final long brokerSideRetentionMs =
                 Long.parseLong(getBrokerSideConfigValue(brokerSideTopicConfig, TopicConfig.RETENTION_MS_CONFIG, topicName));
             final Map<String, String> streamsSideConfig =
-                topicConfig.getProperties(defaultTopicConfigs, windowChangeLogAdditionalRetention);
+                topicConfig.getProperties(defaultTopicConfigs, windowChangeLogAdditionalRetentionPerTopology);
             final long streamsSideRetentionMs = Long.parseLong(streamsSideConfig.get(TopicConfig.RETENTION_MS_CONFIG));
             if (brokerSideRetentionMs < streamsSideRetentionMs) {
                 validationResult.addMisconfiguration(
@@ -409,7 +413,7 @@ public class InternalTopicManager {
                         continue;
                     }
                     final InternalTopicConfig internalTopicConfig = Objects.requireNonNull(topics.get(topicName));
-                    final Map<String, String> topicConfig = internalTopicConfig.getProperties(defaultTopicConfigs, windowChangeLogAdditionalRetention);
+                    final Map<String, String> topicConfig = internalTopicConfig.getProperties(defaultTopicConfigs, windowChangeLogAdditionalRetentionPerTopology);
 
                     log.debug("Going to create topic {} with {} partitions and config {}.",
                         internalTopicConfig.name(),
@@ -606,7 +610,7 @@ public class InternalTopicManager {
         final Map<String, Map<String, String>> streamsSideTopicConfigs = topicConfigs.values().stream()
             .collect(Collectors.toMap(
                 InternalTopicConfig::name,
-                topicConfig -> topicConfig.getProperties(defaultTopicConfigs, windowChangeLogAdditionalRetention)
+                topicConfig -> topicConfig.getProperties(defaultTopicConfigs, windowChangeLogAdditionalRetentionPerTopology)
             ));
         final Set<String> createdTopics = new HashSet<>();
         final Set<String> topicStillToCreate = new HashSet<>(topicConfigs.keySet());
