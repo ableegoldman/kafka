@@ -298,7 +298,7 @@ public class StreamsMetadataState {
     private Set<String> getStoresOnHost(final Map<String, List<String>> storeToSourceTopics,
         final Set<TopicPartition> sourceTopicPartitions, final String topologyName) {
         final InternalTopologyBuilder builder = topologyMetadata.lookupBuilderForNamedTopology(topologyName);
-        Set<String> sourceTopicNames = builder.sourceTopicNames();
+        final Set<String> sourceTopicNames = builder.sourceTopicNames();
 
         final Set<String> storesOnHost = new HashSet<>();
         for (final Map.Entry<String, List<String>> storeTopicEntry : storeToSourceTopics.entrySet()) {
@@ -331,8 +331,8 @@ public class StreamsMetadataState {
             .forEach(hostInfo -> {
                 final Map<String, Collection<String>> namedTopologyToStoreName = new HashMap<>();
                 final Set<String> topologyNames = topologyMetadata.namedTopologiesView();
-                topologyNames.forEach((topologyName) -> {
-                        Collection<String> storesOnHostForTopologyName = getStoresOnHost(storeToSourceTopics, activePartitionHostMap.get(hostInfo), topologyName);
+                topologyNames.forEach(topologyName -> {
+                        final Collection<String> storesOnHostForTopologyName = getStoresOnHost(storeToSourceTopics, activePartitionHostMap.get(hostInfo), topologyName);
                         storesOnHostForTopologyName.addAll(getStoresOnHost(storeToSourceTopics, standbyPartitionHostMap.get(hostInfo), topologyName));
                         namedTopologyToStoreName.put(topologyName, storesOnHostForTopologyName);
                     }
