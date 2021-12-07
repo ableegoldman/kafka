@@ -388,7 +388,7 @@ public class NamedTopologyIntegrationTest {
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 3), equalTo(COUNT_OUTPUT_DATA));
 
         Collection<StreamsMetadata> test1 = streams.streamsMetadataForStore("store");
-        Collection<StreamsMetadata> streamsMetadata = streams.streamsMetadataForStore("store", "topology-1");
+//        Collection<StreamsMetadata> streamsMetadata = streams.streamsMetadataForStore("store", "topology-1");
 
         // TODO KAFKA-12648: need to make sure that both instances actually did some of this processing of topology-2,
         //  ie that both joined the group after the new topology was added and then successfully processed records from it
