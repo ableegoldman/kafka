@@ -42,6 +42,7 @@ import java.util.Set;
 import static org.apache.kafka.common.utils.Utils.mkEntry;
 import static org.apache.kafka.common.utils.Utils.mkMap;
 import static org.apache.kafka.common.utils.Utils.mkSet;
+import static org.apache.kafka.streams.processor.internals.TopologyMetadata.UNNAMED_TOPOLOGY;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.SUBTOPOLOGY_0;
 import static org.apache.kafka.streams.processor.internals.assignment.AssignmentTestUtils.SUBTOPOLOGY_1;
 
@@ -52,6 +53,7 @@ import static org.easymock.EasyMock.mock;
 import static org.easymock.EasyMock.niceMock;
 import static org.easymock.EasyMock.replay;
 import static org.easymock.EasyMock.verify;
+import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -147,7 +149,8 @@ public class RepartitionTopicsTest {
     }
 
     @Test
-    public void shouldThrowMissingSourceTopicException() {
+    public void shouldReturnMissingSourceTopics() {
+        final Set<String> missingSourceTopics = mkSet(SOURCE_TOPIC_NAME1);
         expect(internalTopologyBuilder.topicGroups())
             .andReturn(mkMap(mkEntry(SUBTOPOLOGY_0, TOPICS_INFO1), mkEntry(SUBTOPOLOGY_1, TOPICS_INFO2)));
         expect(internalTopologyBuilder.copartitionGroups()).andReturn(Collections.emptyList());
@@ -157,7 +160,7 @@ public class RepartitionTopicsTest {
                 mkEntry(REPARTITION_TOPIC_NAME1, REPARTITION_TOPIC_CONFIG1)
             ))
         ).andReturn(Collections.emptySet());
-        setupClusterWithMissingTopics(mkSet(SOURCE_TOPIC_NAME1));
+        setupClusterWithMissingTopics(missingSourceTopics);
         replay(internalTopicManager, internalTopologyBuilder, clusterMetadata);
         final RepartitionTopics repartitionTopics = new RepartitionTopics(
             new TopologyMetadata(internalTopologyBuilder, config),
@@ -167,7 +170,7 @@ public class RepartitionTopicsTest {
             "[test] "
         );
 
-        assertThrows(MissingSourceTopicException.class, repartitionTopics::setup);
+        assertThat(repartitionTopics.setup(), equalTo(Collections.singletonMap(UNNAMED_TOPOLOGY, missingSourceTopics)));
     }
 
     @Test
@@ -360,8 +363,6 @@ public class RepartitionTopicsTest {
         );
         expect(internalTopologyBuilder.topicGroups())
             .andReturn(mkMap(mkEntry(SUBTOPOLOGY_0, topicsInfo)));
-        expect(internalTopologyBuilder.copartitionGroups()).andReturn(Collections.emptySet());
-        expect(internalTopicManager.makeReady(Collections.emptyMap())).andReturn(Collections.emptySet());
         setupCluster();
         replay(internalTopicManager, internalTopologyBuilder, clusterMetadata);
         final RepartitionTopics repartitionTopics = new RepartitionTopics(
