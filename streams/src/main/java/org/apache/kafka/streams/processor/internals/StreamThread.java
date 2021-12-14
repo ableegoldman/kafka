@@ -936,9 +936,14 @@ public class StreamThread extends Thread {
             // other useful work while waiting for the join response
             records = pollRequests(Duration.ZERO);
         } else if (state == State.RUNNING || state == State.STARTING) {
-            // try to fetch some records with normal poll time
-            // in order to get long polling
-            records = pollRequests(pollTime);
+            // try to fetch some records with normal poll time in order to get long polling
+            // or a multiple of that when there are no partitions to process for extra long polling
+            // (eg when there are some topologies to process but all are missing source topics)
+            if (taskManager.tasks().isEmpty()) {
+                records = pollRequests(pollTime.multipliedBy(10));
+            } else {
+                records = pollRequests(pollTime);
+            }
         } else if (state == State.PENDING_SHUTDOWN) {
             // we are only here because there's rebalance in progress,
             // just poll with zero to complete it
