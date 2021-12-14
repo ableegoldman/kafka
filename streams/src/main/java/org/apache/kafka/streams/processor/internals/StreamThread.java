@@ -917,8 +917,9 @@ public class StreamThread extends Thread {
 
             topologyMetadata.maybeWaitForNonEmptyTopology(() -> state);
 
+            // We don't need to manually trigger a rebalance to pick up tasks from the new topology, as
+            // a rebalance will always occur when the metadata is updated after a change in subscription
             subscribeConsumer();
-            mainConsumer.enforceRebalance();
         }
     }
 
