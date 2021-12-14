@@ -436,9 +436,25 @@ public class TopologyMetadata {
         return sourceTopics;
     }
 
-    public Map<Subtopology, TopicsInfo> topicGroups() {
+    /**
+     * @param topologiesToExclude the names of any topologies to exclude from the returned topic groups,
+     *                            eg because they have missing source topics and can't be processed yet
+     */
+    public Map<Subtopology, TopicsInfo> topicGroups(final Set<String> topologiesToExclude) {
         final Map<Subtopology, TopicsInfo> topicGroups = new HashMap<>();
-        applyToEachBuilder(b -> topicGroups.putAll(b.topicGroups()));
+        for (final InternalTopologyBuilder builder : builders.values()) {
+            if (!topologiesToExclude.contains(builder.topologyName())) {
+                topicGroups.putAll(builder.topicGroups());
+            }
+        }
+        return topicGroups;
+    }
+
+    public Map<String, Collection<TopicsInfo>> topicGroupsByTopology() {
+        final Map<String, Collection<TopicsInfo>> topicGroups = new HashMap<>();
+        applyToEachBuilder(
+            b -> topicGroups.put(b.topologyName() == null ? "" : b.topologyName(), b.topicGroups().values())
+        );
         return topicGroups;
     }
 

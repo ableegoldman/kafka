@@ -59,9 +59,12 @@ public class RepartitionTopics {
         log = logContext.logger(getClass());
     }
 
-    public void setup() {
-        final Map<Subtopology, TopicsInfo> topicGroups = topologyMetadata.topicGroups();
-        final Map<String, InternalTopicConfig> repartitionTopicMetadata = computeRepartitionTopicConfig(topicGroups, clusterMetadata);
+    public Map<String, Set<String>> setup() {
+        final Map<String, Set<String>> missingExternalSourceTopicsPerTopology = new HashMap<>();
+
+        final Map<String, Collection<TopicsInfo>> topicGroups = topologyMetadata.topicGroupsByTopology();
+        final Map<String, InternalTopicConfig> repartitionTopicMetadata
+            = computeRepartitionTopicConfig(topicGroups, clusterMetadata, missingExternalSourceTopicsPerTopology);
 
         // ensure the co-partitioning topics within the group have the same number of partitions,
         // and enforce the number of partitions for those repartition topics to be the same if they
@@ -85,24 +88,51 @@ public class RepartitionTopics {
                 );
             }
         }
+
+        return missingExternalSourceTopicsPerTopology;
     }
 
     public Map<TopicPartition, PartitionInfo> topicPartitionsInfo() {
         return Collections.unmodifiableMap(topicPartitionInfos);
     }
 
-    private Map<String, InternalTopicConfig> computeRepartitionTopicConfig(final Map<Subtopology, TopicsInfo> topicGroups,
-                                                                           final Cluster clusterMetadata) {
-
-        final Map<String, InternalTopicConfig> repartitionTopicConfigs = new HashMap<>();
-        for (final TopicsInfo topicsInfo : topicGroups.values()) {
-            checkIfExternalSourceTopicsExist(topicsInfo, clusterMetadata);
-            repartitionTopicConfigs.putAll(topicsInfo.repartitionSourceTopics.values().stream()
-                .collect(Collectors.toMap(InternalTopicConfig::name, topicConfig -> topicConfig)));
+    /**
+     * @param topicGroups                            information about the topic groups (subtopologies) in this application
+     * @param clusterMetadata                        cluster metadata, eg which topics exist on the brokers
+     * @param topologiesWithMissingSourceTopics  set of missing user input topics, to be filled in by this method
+     */
+    private Map<String, InternalTopicConfig> computeRepartitionTopicConfig(final Map<String, Collection<TopicsInfo>> topicGroups,
+                                                                           final Cluster clusterMetadata,
+                                                                           final Map<String, Set<String>> topologiesWithMissingSourceTopics) {
+        final Set<TopicsInfo> allTopicsInfo = new HashSet<>();
+        final Map<String, InternalTopicConfig> allRepartitionTopicConfigs = new HashMap<>();
+        for (final Map.Entry<String, Collection<TopicsInfo>> topology : topicGroups.entrySet()) {
+            final String topologyName = topology.getKey();
+            final Set<String> missingSourceTopicsPerTopology = new HashSet<>();
+            final Map<String, InternalTopicConfig> repartitionTopicConfigsPerTopology = new HashMap<>();
+            for (final TopicsInfo topicsInfo : topology.getValue()) {
+                missingSourceTopicsPerTopology.addAll(computeMissingExternalSourceTopics(topicsInfo, clusterMetadata));
+                repartitionTopicConfigsPerTopology.putAll(
+                    topicsInfo.repartitionSourceTopics
+                        .values()
+                        .stream()
+                        .collect(Collectors.toMap(InternalTopicConfig::name, topicConfig -> topicConfig)));
+            }
+            if (missingSourceTopicsPerTopology.isEmpty()) {
+                allRepartitionTopicConfigs.putAll(repartitionTopicConfigsPerTopology);
+                allTopicsInfo.addAll(topology.getValue());
+            } else {
+                topologiesWithMissingSourceTopics.put(topologyName, missingSourceTopicsPerTopology);
+                log.error("Topology {} was missing source topics {} and will be excluded from the current assignment, "
+                              + "this can be due to the consumer client's metadata being stale or because they have "
+                              + "not been created yet. Please verify that you have created all input topics. When the "
+                              + "metadata is updated a new rebalance will be kicked off automatically and the topology "
+                              + "will retried at that time.", topologyName, missingSourceTopicsPerTopology);
+            }
         }
-        setRepartitionSourceTopicPartitionCount(repartitionTopicConfigs, topicGroups, clusterMetadata);
+        setRepartitionSourceTopicPartitionCount(allRepartitionTopicConfigs, allTopicsInfo, clusterMetadata);
 
-        return repartitionTopicConfigs;
+        return allRepartitionTopicConfigs;
     }
 
     private void ensureCopartitioning(final Collection<Set<String>> copartitionGroups,
@@ -113,31 +143,26 @@ public class RepartitionTopics {
         }
     }
 
-    private void checkIfExternalSourceTopicsExist(final TopicsInfo topicsInfo,
-                                                  final Cluster clusterMetadata) {
+    private Set<String> computeMissingExternalSourceTopics(final TopicsInfo topicsInfo,
+                                                           final Cluster clusterMetadata) {
         final Set<String> missingExternalSourceTopics = new HashSet<>(topicsInfo.sourceTopics);
         missingExternalSourceTopics.removeAll(topicsInfo.repartitionSourceTopics.keySet());
         missingExternalSourceTopics.removeAll(clusterMetadata.topics());
-        if (!missingExternalSourceTopics.isEmpty()) {
-            log.error("The following source topics are missing/unknown: {}. Please make sure all source topics " +
-                    "have been pre-created before starting the Streams application. ",
-                missingExternalSourceTopics);
-            throw new MissingSourceTopicException("Missing source topics.");
-        }
+        return missingExternalSourceTopics;
     }
 
     /**
      * Computes the number of partitions and sets it for each repartition topic in repartitionTopicMetadata
      */
     private void setRepartitionSourceTopicPartitionCount(final Map<String, InternalTopicConfig> repartitionTopicMetadata,
-                                                         final Map<Subtopology, TopicsInfo> topicGroups,
+                                                         final Collection<TopicsInfo> topicGroups,
                                                          final Cluster clusterMetadata) {
         boolean partitionCountNeeded;
         do {
             partitionCountNeeded = false;
             boolean progressMadeThisIteration = false;  // avoid infinitely looping without making any progress on unknown repartitions
 
-            for (final TopicsInfo topicsInfo : topicGroups.values()) {
+            for (final TopicsInfo topicsInfo : topicGroups) {
                 for (final String repartitionSourceTopic : topicsInfo.repartitionSourceTopics.keySet()) {
                     final Optional<Integer> repartitionSourceTopicPartitionCount =
                         repartitionTopicMetadata.get(repartitionSourceTopic).numberOfPartitions();
@@ -173,12 +198,12 @@ public class RepartitionTopics {
     }
 
     private Integer computePartitionCount(final Map<String, InternalTopicConfig> repartitionTopicMetadata,
-                                          final Map<Subtopology, TopicsInfo> topicGroups,
+                                          final Collection<TopicsInfo> topicGroups,
                                           final Cluster clusterMetadata,
                                           final String repartitionSourceTopic) {
         Integer partitionCount = null;
         // try set the number of partitions for this repartition topic if it is not set yet
-        for (final TopicsInfo topicsInfo : topicGroups.values()) {
+        for (final TopicsInfo topicsInfo : topicGroups) {
             final Set<String> sinkTopics = topicsInfo.sinkTopics;
 
             if (sinkTopics.contains(repartitionSourceTopic)) {

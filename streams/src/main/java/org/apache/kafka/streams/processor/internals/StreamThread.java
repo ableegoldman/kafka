@@ -1137,6 +1137,8 @@ public class StreamThread extends Thread {
 
         log.info("Shutting down");
 
+        topologyMetadata.unregisterThread(threadMetadata.threadName());
+
         try {
             taskManager.shutdown(cleanRun);
         } catch (final Throwable e) {
@@ -1164,8 +1166,6 @@ public class StreamThread extends Thread {
         streamsMetrics.removeAllThreadLevelMetrics(getName());
 
         setState(State.DEAD);
-
-        topologyMetadata.unregisterThread(threadMetadata.threadName());
 
         log.info("Shutdown complete");
     }

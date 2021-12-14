@@ -317,7 +317,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
         int minSupportedMetadataVersion = LATEST_SUPPORTED_VERSION;
 
         boolean shutdownRequested = false;
-        boolean assignementErrorFound = false;
+        boolean assignmentErrorFound = false;
         int futureMetadataVersion = UNKNOWN;
         for (final Map.Entry<String, Subscription> entry : subscriptions.entrySet()) {
             final String consumerId = entry.getKey();
@@ -355,12 +355,12 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             final int prevSize = allOwnedPartitions.size();
             allOwnedPartitions.addAll(subscription.ownedPartitions());
             if (allOwnedPartitions.size() < prevSize + subscription.ownedPartitions().size()) {
-                assignementErrorFound = true;
+                assignmentErrorFound = true;
             }
             clientMetadata.addPreviousTasksAndOffsetSums(consumerId, info.taskOffsetSums());
         }
 
-        if (assignementErrorFound) {
+        if (assignmentErrorFound) {
             log.warn("The previous assignment contains a partition more than once. " +
                 "\t Mapping: {}", subscriptions);
         }
@@ -380,7 +380,28 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             // parse the topology to determine the repartition source topics,
             // making sure they are created with the number of partitions as
             // the maximum of the depending sub-topologies source topics' number of partitions
-            final Map<TopicPartition, PartitionInfo> allRepartitionTopicPartitions = prepareRepartitionTopics(metadata);
+            final RepartitionTopics repartitionTopics = new RepartitionTopics(
+                taskManager.topologyMetadata(),
+                internalTopicManager,
+                copartitionedTopicsEnforcer,
+                metadata,
+                logPrefix
+            );
+
+            final Map<String, Set<String>> missingExternalSourceTopicsPerTopology = repartitionTopics.setup();
+            if (!missingExternalSourceTopicsPerTopology.isEmpty()) {
+                log.error("The following source topics are missing/unknown: {}. Please make sure all source topics " +
+                              "have been pre-created before starting the Streams application. ",
+                          taskManager.topologyMetadata().hasNamedTopologies() ?
+                              missingExternalSourceTopicsPerTopology :
+                              missingExternalSourceTopicsPerTopology.values()
+                );
+                if (!taskManager.topologyMetadata().hasNamedTopologies()) {
+                    throw new MissingSourceTopicException("Missing source topics.");
+                }
+            }
+
+            final Map<TopicPartition, PartitionInfo> allRepartitionTopicPartitions = repartitionTopics.topicPartitionsInfo();
             final Cluster fullMetadata = metadata.withPartitions(allRepartitionTopicPartitions);
             log.debug("Created repartition topics {} from the parsed topology.", allRepartitionTopicPartitions.values());
 
@@ -388,7 +409,8 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
 
             // construct the assignment of tasks to clients
 
-            final Map<Subtopology, TopicsInfo> topicGroups = taskManager.topologyMetadata().topicGroups();
+            final Map<Subtopology, TopicsInfo> topicGroups =
+                taskManager.topologyMetadata().topicGroups(missingExternalSourceTopicsPerTopology.keySet());
 
             final Set<String> allSourceTopics = new HashSet<>();
             final Map<Subtopology, Set<String>> sourceTopicsByGroup = new HashMap<>();
@@ -485,24 +507,6 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
                 LATEST_SUPPORTED_VERSION);
         }
         return versionProbing;
-    }
-
-    /**
-     * Computes and assembles all repartition topic metadata then creates the topics if necessary.
-     *
-     * @return map from repartition topic to its partition info
-     */
-    private Map<TopicPartition, PartitionInfo> prepareRepartitionTopics(final Cluster metadata) {
-
-        final RepartitionTopics repartitionTopics = new RepartitionTopics(
-            taskManager.topologyMetadata(),
-            internalTopicManager,
-            copartitionedTopicsEnforcer,
-            metadata,
-            logPrefix
-        );
-        repartitionTopics.setup();
-        return repartitionTopics.topicPartitionsInfo();
     }
 
     /**
