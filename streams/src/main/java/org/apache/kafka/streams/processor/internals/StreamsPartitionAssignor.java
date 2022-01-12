@@ -380,28 +380,10 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             // parse the topology to determine the repartition source topics,
             // making sure they are created with the number of partitions as
             // the maximum of the depending sub-topologies source topics' number of partitions
-            final RepartitionTopics repartitionTopics = new RepartitionTopics(
-                taskManager.topologyMetadata(),
-                internalTopicManager,
-                copartitionedTopicsEnforcer,
-                metadata,
-                logPrefix
-            );
-
-            final Map<String, Set<String>> missingExternalSourceTopicsPerTopology = repartitionTopics.setup();
-            if (!missingExternalSourceTopicsPerTopology.isEmpty()) {
-                log.error("The following source topics are missing/unknown: {}. Please make sure all source topics " +
-                              "have been pre-created before starting the Streams application. ",
-                          taskManager.topologyMetadata().hasNamedTopologies() ?
-                              missingExternalSourceTopicsPerTopology :
-                              missingExternalSourceTopicsPerTopology.values()
-                );
-                if (!taskManager.topologyMetadata().hasNamedTopologies()) {
-                    throw new MissingSourceTopicException("Missing source topics.");
-                }
-            }
-
+            final RepartitionTopics repartitionTopics = prepareRepartitionTopics(metadata);
             final Map<TopicPartition, PartitionInfo> allRepartitionTopicPartitions = repartitionTopics.topicPartitionsInfo();
+            final Map<String, Set<String>> missingUserInputTopicsPerTopology = repartitionTopics.missingUserInputTopicsPerTopology();
+
             final Cluster fullMetadata = metadata.withPartitions(allRepartitionTopicPartitions);
             log.debug("Created repartition topics {} from the parsed topology.", allRepartitionTopicPartitions.values());
 
@@ -410,7 +392,7 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             // construct the assignment of tasks to clients
 
             final Map<Subtopology, TopicsInfo> topicGroups =
-                taskManager.topologyMetadata().topicGroups(missingExternalSourceTopicsPerTopology.keySet());
+                taskManager.topologyMetadata().topicGroups(missingUserInputTopicsPerTopology.keySet());
 
             final Set<String> allSourceTopics = new HashSet<>();
             final Map<Subtopology, Set<String>> sourceTopicsByGroup = new HashMap<>();
@@ -508,6 +490,38 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
         }
         return versionProbing;
     }
+
+    /**
+     * Computes and assembles all repartition topic metadata then creates the topics if necessary. Also verifies
+     * that all user input topics of each topology have been created ahead of time. If any such source topics are
+     * missing from a NamedTopology, the assignor will skip distributing its tasks until they have been created
+     * and invoke the exception handler (without killing the thread) once for each topology to alert the user of
+     * the missing topics.
+     * <p>
+     * For regular applications without named topologies, the assignor will instead send a shutdown signal to
+     * all clients so the user can identify and resolve the problem.
+     *
+     * @return application metadata such as partition info of repartition topics, missing external topics, etc
+     */
+    private RepartitionTopics prepareRepartitionTopics(final Cluster metadata) {
+        final RepartitionTopics repartitionTopics = new RepartitionTopics(
+            taskManager.topologyMetadata(),
+            internalTopicManager,
+            copartitionedTopicsEnforcer,
+            metadata,
+            logPrefix
+        );
+        final boolean isMissingInputTopics = repartitionTopics.setup();
+        if (isMissingInputTopics) {
+            if (!taskManager.topologyMetadata().hasNamedTopologies()) {
+                throw new MissingSourceTopicException("Missing source topics.");
+            } else {
+
+            }
+        }
+        return repartitionTopics;
+    }
+
 
     /**
      * Populates the taskForPartition and tasksForTopicGroup maps, and checks that partitions are assigned to exactly
