@@ -52,7 +52,6 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
@@ -84,11 +83,6 @@ public class NamedTopologyIntegrationTest {
     private static final String TOPOLOGY_2 = "topology-2";
     private static final String TOPOLOGY_3 = "topology-3";
 
-    // TODO KAFKA-12648:
-    //  1) full test coverage for add/removeNamedTopology, covering:
-    //      - the "last topology removed" case
-    //      - test using multiple clients, with standbys
-
     // "standard" input topics which are pre-filled with the STANDARD_INPUT_DATA
     private final static String INPUT_STREAM_1 = "input-stream-1";
     private final static String INPUT_STREAM_2 = "input-stream-2";
@@ -106,6 +100,9 @@ public class NamedTopologyIntegrationTest {
     private final static String DELAYED_INPUT_STREAM_2 = "delayed-input-stream-2";
     private final static String DELAYED_INPUT_STREAM_3 = "delayed-input-stream-3";
     private final static String DELAYED_INPUT_STREAM_4 = "delayed-input-stream-4";
+
+    // topic that is not initially created during the test setup
+    private final static String NEW_STREAM = "new-stream";
 
     private final static Materialized<Object, Long, KeyValueStore<Bytes, byte[]>> IN_MEMORY_STORE = Materialized.as(Stores.inMemoryKeyValueStore("store"));
     private final static Materialized<Object, Long, KeyValueStore<Bytes, byte[]>> ROCKSDB_STORE = Materialized.as(Stores.persistentKeyValueStore("store"));
@@ -375,7 +372,6 @@ public class NamedTopologyIntegrationTest {
     }
 
     @Test
-    @Ignore
     public void shouldAddNamedTopologyToRunningApplicationWithMultipleNodes() throws Exception {
         setupSecondKafkaStreams();
         topology1Builder.stream(INPUT_STREAM_1).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
@@ -388,18 +384,14 @@ public class NamedTopologyIntegrationTest {
         streams2.start(topology1Builder2.build());
         waitForApplicationState(asList(streams, streams2), State.RUNNING, Duration.ofSeconds(30));
 
+        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(COUNT_OUTPUT_DATA));
+
         final AddNamedTopologyResult result = streams.addNamedTopology(topology2Builder.build());
         final AddNamedTopologyResult result2 = streams2.addNamedTopology(topology2Builder2.build());
         result.all().get();
         result2.all().get();
 
-        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(COUNT_OUTPUT_DATA));
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 3), equalTo(COUNT_OUTPUT_DATA));
-
-        // TODO KAFKA-12648: need to make sure that both instances actually did some of this processing of topology-2,
-        //  ie that both joined the group after the new topology was added and then successfully processed records from it
-        //  Also: test where we wait for a rebalance between streams.addNamedTopology and streams2.addNamedTopology,
-        //  and vice versa, to make sure we hit case where not all new tasks are initially assigned, and when not all yet known
     }
 
     @Test
@@ -552,7 +544,6 @@ public class NamedTopologyIntegrationTest {
     }
 
     @Test
-    @Ignore
     public void shouldAddToEmptyInitialTopologyRemoveResetOffsetsThenAddSameNamedTopologyWithRepartitioning() throws Exception {
         CLUSTER.createTopics(SUM_OUTPUT, COUNT_OUTPUT);
         // Build up named topology with two stateful subtopologies
@@ -587,6 +578,44 @@ public class NamedTopologyIntegrationTest {
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, SUM_OUTPUT, 3), equalTo(SUM_OUTPUT_DATA));
 
         CLUSTER.deleteTopicsAndWait(SUM_OUTPUT, COUNT_OUTPUT);
+    }
+
+    @Test
+    public void shouldContinueProcessingOtherTopologiesWhenNewTopologyHasMissingInputTopics() throws Exception {
+        setupSecondKafkaStreams();
+        topology1Builder.stream(INPUT_STREAM_1).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
+        topology1Builder2.stream(INPUT_STREAM_1).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
+
+        streams.start(topology1Builder.build());
+        streams2.start(topology1Builder2.build());
+        waitForApplicationState(asList(streams, streams2), State.RUNNING, Duration.ofSeconds(30));
+        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(COUNT_OUTPUT_DATA));
+
+        topology2Builder.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_2);
+        topology2Builder2.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_2);
+
+        streams.addNamedTopology(topology2Builder.build());
+        streams2.addNamedTopology(topology2Builder2.build());
+
+        CLUSTER.createTopic(NEW_STREAM, 2, 1);
+        produceToInputTopics(NEW_STREAM, STANDARD_INPUT_DATA);
+        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 3), equalTo(COUNT_OUTPUT_DATA));
+    }
+
+    @Test
+    public void shouldWaitForMissingInputTopicsToBeCreatedWhileOtherTopologyContinuesProcessing() throws Exception {
+        setupSecondKafkaStreams();
+        topology1Builder.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
+        topology1Builder2.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
+
+        streams.start(topology1Builder.build());
+        streams2.start(topology1Builder2.build());
+        waitForApplicationState(asList(streams, streams2), State.RUNNING, Duration.ofSeconds(30));
+
+        CLUSTER.createTopic(NEW_STREAM, 2, 1);
+        produceToInputTopics(NEW_STREAM, STANDARD_INPUT_DATA);
+
+        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(COUNT_OUTPUT_DATA));
     }
 
     private static void produceToInputTopics(final String topic, final Collection<KeyValue<String, Long>> records) {
