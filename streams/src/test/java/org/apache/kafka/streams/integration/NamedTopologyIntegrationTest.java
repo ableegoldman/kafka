@@ -597,9 +597,13 @@ public class NamedTopologyIntegrationTest {
         streams.addNamedTopology(topology2Builder.build());
         streams2.addNamedTopology(topology2Builder2.build());
 
-        CLUSTER.createTopic(NEW_STREAM, 2, 1);
-        produceToInputTopics(NEW_STREAM, STANDARD_INPUT_DATA);
-        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 3), equalTo(COUNT_OUTPUT_DATA));
+        try {
+            CLUSTER.createTopic(NEW_STREAM, 2, 1);
+            produceToInputTopics(NEW_STREAM, STANDARD_INPUT_DATA);
+            assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 3), equalTo(COUNT_OUTPUT_DATA));
+        } finally {
+            CLUSTER.deleteTopicsAndWait(NEW_STREAM);
+        }
     }
 
     @Test
@@ -612,10 +616,14 @@ public class NamedTopologyIntegrationTest {
         streams2.start(topology1Builder2.build());
         waitForApplicationState(asList(streams, streams2), State.RUNNING, Duration.ofSeconds(30));
 
-        CLUSTER.createTopic(NEW_STREAM, 2, 1);
-        produceToInputTopics(NEW_STREAM, STANDARD_INPUT_DATA);
+        try {
+            CLUSTER.createTopic(NEW_STREAM, 2, 1);
+            produceToInputTopics(NEW_STREAM, STANDARD_INPUT_DATA);
 
-        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(COUNT_OUTPUT_DATA));
+            assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(COUNT_OUTPUT_DATA));
+        } finally {
+            CLUSTER.deleteTopicsAndWait(NEW_STREAM);
+        }
     }
 
     private static void produceToInputTopics(final String topic, final Collection<KeyValue<String, Long>> records) {
