@@ -28,6 +28,9 @@ import org.apache.kafka.streams.KafkaStreams.State;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.StreamsMetadata;
+import org.apache.kafka.streams.errors.MissingSourceTopicException;
+import org.apache.kafka.streams.errors.StreamsException;
+import org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler;
 import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
 import org.apache.kafka.streams.kstream.Consumed;
@@ -48,11 +51,14 @@ import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.utils.UniqueTopicSerdeScope;
 import org.apache.kafka.test.TestUtils;
 
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Queue;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
@@ -70,9 +76,13 @@ import static org.apache.kafka.streams.KeyValue.pair;
 import static org.apache.kafka.streams.integration.utils.IntegrationTestUtils.safeUniqueTestName;
 import static org.apache.kafka.streams.integration.utils.IntegrationTestUtils.waitForApplicationState;
 import static org.apache.kafka.streams.integration.utils.IntegrationTestUtils.waitUntilMinKeyValueRecordsReceived;
+import static org.apache.kafka.streams.processor.internals.ClientUtils.extractThreadId;
+import static org.apache.kafka.test.TestUtils.retryOnExceptionWithTimeout;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
@@ -83,11 +93,6 @@ public class NamedTopologyIntegrationTest {
     private static final String TOPOLOGY_1 = "topology-1";
     private static final String TOPOLOGY_2 = "topology-2";
     private static final String TOPOLOGY_3 = "topology-3";
-
-    // TODO KAFKA-12648:
-    //  1) full test coverage for add/removeNamedTopology, covering:
-    //      - the "last topology removed" case
-    //      - test using multiple clients, with standbys
 
     // "standard" input topics which are pre-filled with the STANDARD_INPUT_DATA
     private final static String INPUT_STREAM_1 = "input-stream-1";
@@ -106,6 +111,12 @@ public class NamedTopologyIntegrationTest {
     private final static String DELAYED_INPUT_STREAM_2 = "delayed-input-stream-2";
     private final static String DELAYED_INPUT_STREAM_3 = "delayed-input-stream-3";
     private final static String DELAYED_INPUT_STREAM_4 = "delayed-input-stream-4";
+
+    // topic that is not initially created during the test setup
+    private final static String NEW_STREAM = "new-stream";
+
+    // existing topic that is pre-filled but cleared between tests
+    private final static String EXISTING_STREAM = "existing-stream";
 
     private final static Materialized<Object, Long, KeyValueStore<Bytes, byte[]>> IN_MEMORY_STORE = Materialized.as(Stores.inMemoryKeyValueStore("store"));
     private final static Materialized<Object, Long, KeyValueStore<Bytes, byte[]>> ROCKSDB_STORE = Materialized.as(Stores.persistentKeyValueStore("store"));
@@ -170,7 +181,6 @@ public class NamedTopologyIntegrationTest {
     // builders for the 2nd Streams instance
     private NamedTopologyBuilder topology1Builder2;
     private NamedTopologyBuilder topology2Builder2;
-    private NamedTopologyBuilder topology3Builder2;
 
     private Properties configProps(final String appId) {
         final Properties streamsConfiguration = new Properties();
@@ -213,7 +223,6 @@ public class NamedTopologyIntegrationTest {
         streams2 = new KafkaStreamsNamedTopologyWrapper(props2, clientSupplier);
         topology1Builder2 = streams2.newNamedTopologyBuilder(TOPOLOGY_1);
         topology2Builder2 = streams2.newNamedTopologyBuilder(TOPOLOGY_2);
-        topology3Builder2 = streams2.newNamedTopologyBuilder(TOPOLOGY_3);
     }
 
     @After
@@ -375,7 +384,6 @@ public class NamedTopologyIntegrationTest {
     }
 
     @Test
-    @Ignore
     public void shouldAddNamedTopologyToRunningApplicationWithMultipleNodes() throws Exception {
         setupSecondKafkaStreams();
         topology1Builder.stream(INPUT_STREAM_1).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
@@ -388,18 +396,14 @@ public class NamedTopologyIntegrationTest {
         streams2.start(topology1Builder2.build());
         waitForApplicationState(asList(streams, streams2), State.RUNNING, Duration.ofSeconds(30));
 
+        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(COUNT_OUTPUT_DATA));
+
         final AddNamedTopologyResult result = streams.addNamedTopology(topology2Builder.build());
         final AddNamedTopologyResult result2 = streams2.addNamedTopology(topology2Builder2.build());
         result.all().get();
         result2.all().get();
 
-        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(COUNT_OUTPUT_DATA));
         assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 3), equalTo(COUNT_OUTPUT_DATA));
-
-        // TODO KAFKA-12648: need to make sure that both instances actually did some of this processing of topology-2,
-        //  ie that both joined the group after the new topology was added and then successfully processed records from it
-        //  Also: test where we wait for a rebalance between streams.addNamedTopology and streams2.addNamedTopology,
-        //  and vice versa, to make sure we hit case where not all new tasks are initially assigned, and when not all yet known
     }
 
     @Test
@@ -552,7 +556,6 @@ public class NamedTopologyIntegrationTest {
     }
 
     @Test
-    @Ignore
     public void shouldAddToEmptyInitialTopologyRemoveResetOffsetsThenAddSameNamedTopologyWithRepartitioning() throws Exception {
         CLUSTER.createTopics(SUM_OUTPUT, COUNT_OUTPUT);
         // Build up named topology with two stateful subtopologies
@@ -589,6 +592,113 @@ public class NamedTopologyIntegrationTest {
         CLUSTER.deleteTopicsAndWait(SUM_OUTPUT, COUNT_OUTPUT);
     }
 
+    @Test
+    public void shouldContinueProcessingOtherTopologiesWhenNewTopologyHasMissingInputTopics() throws Exception {
+        try {
+            CLUSTER.createTopic(EXISTING_STREAM, 2, 1);
+            produceToInputTopics(EXISTING_STREAM, STANDARD_INPUT_DATA);
+            setupSecondKafkaStreams();
+            topology1Builder.stream(EXISTING_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
+            topology1Builder2.stream(EXISTING_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
+
+            final TrackingExceptionHandler handler = new TrackingExceptionHandler();
+            streams.setUncaughtExceptionHandler(handler);
+            streams2.setUncaughtExceptionHandler(handler);
+
+            streams.start(topology1Builder.build());
+            streams2.start(topology1Builder2.build());
+            waitForApplicationState(asList(streams, streams2), State.RUNNING, Duration.ofSeconds(30));
+            assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(COUNT_OUTPUT_DATA));
+
+            topology2Builder.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_2);
+            topology2Builder2.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_2);
+
+            assertThat(handler.nextError(TOPOLOGY_2), nullValue());
+
+            streams.addNamedTopology(topology2Builder.build());
+            streams2.addNamedTopology(topology2Builder2.build());
+
+            // verify that the missing source topics were noticed and the handler invoked
+            retryOnExceptionWithTimeout(() -> {
+                final Throwable error = handler.nextError(TOPOLOGY_2);
+                assertThat(error, notNullValue());
+                assertThat(error.getCause().getClass(), is(MissingSourceTopicException.class));
+            });
+
+            // make sure the original topology can continue processing while waiting on the new source topics
+            produceToInputTopics(EXISTING_STREAM, singletonList(pair("A", 30L)));
+            assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 1), equalTo(singletonList(pair("A", 3L))));
+
+            CLUSTER.createTopic(NEW_STREAM, 2, 1);
+            produceToInputTopics(NEW_STREAM, STANDARD_INPUT_DATA);
+            assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 3), equalTo(COUNT_OUTPUT_DATA));
+
+            // Make sure the threads were not actually killed and replaced
+            assertThat(streams.metadataForLocalThreads().size(), equalTo(2));
+            assertThat(streams2.metadataForLocalThreads().size(), equalTo(2));
+
+            final Set<String> localThreadsNames = streams.metadataForLocalThreads().stream()
+                .map(t -> extractThreadId(t.threadName()))
+                .collect(Collectors.toSet());
+            final Set<String> localThreadsNames2 = streams2.metadataForLocalThreads().stream()
+                .map(t -> extractThreadId(t.threadName()))
+                .collect(Collectors.toSet());
+
+            assertThat(localThreadsNames.contains("StreamThread-1"), is(true));
+            assertThat(localThreadsNames.contains("StreamThread-2"), is(true));
+            assertThat(localThreadsNames2.contains("StreamThread-1"), is(true));
+            assertThat(localThreadsNames2.contains("StreamThread-2"), is(true));
+        } finally {
+            CLUSTER.deleteTopicsAndWait(EXISTING_STREAM, NEW_STREAM);
+        }
+    }
+
+    @Test
+    public void shouldWaitForMissingInputTopicsToBeCreated() throws Exception {
+        setupSecondKafkaStreams();
+        topology1Builder.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
+        topology1Builder2.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
+
+        final TrackingExceptionHandler handler = new  TrackingExceptionHandler();
+        streams.setUncaughtExceptionHandler(handler);
+        streams2.setUncaughtExceptionHandler(handler);
+
+        streams.start(topology1Builder.build());
+        streams2.start(topology1Builder2.build());
+        waitForApplicationState(asList(streams, streams2), State.RUNNING, Duration.ofSeconds(30));
+
+        retryOnExceptionWithTimeout(() -> {
+            final Throwable error = handler.nextError(TOPOLOGY_1);
+            assertThat(error, notNullValue());
+            assertThat(error.getCause().getClass(), is(MissingSourceTopicException.class));
+        });
+
+        try {
+            CLUSTER.createTopic(NEW_STREAM, 2, 1);
+            produceToInputTopics(NEW_STREAM, STANDARD_INPUT_DATA);
+
+            assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(COUNT_OUTPUT_DATA));
+
+            // Make sure the threads were not actually killed and replaced
+            assertThat(streams.metadataForLocalThreads().size(), equalTo(2));
+            assertThat(streams2.metadataForLocalThreads().size(), equalTo(2));
+
+            final Set<String> localThreadsNames = streams.metadataForLocalThreads().stream()
+                .map(t -> extractThreadId(t.threadName()))
+                .collect(Collectors.toSet());
+            final Set<String> localThreadsNames2 = streams2.metadataForLocalThreads().stream()
+                .map(t -> extractThreadId(t.threadName()))
+                .collect(Collectors.toSet());
+
+            assertThat(localThreadsNames.contains("StreamThread-1"), is(true));
+            assertThat(localThreadsNames.contains("StreamThread-2"), is(true));
+            assertThat(localThreadsNames2.contains("StreamThread-1"), is(true));
+            assertThat(localThreadsNames2.contains("StreamThread-2"), is(true));
+        } finally {
+            CLUSTER.deleteTopicsAndWait(NEW_STREAM);
+        }
+    }
+
     private static void produceToInputTopics(final String topic, final Collection<KeyValue<String, Long>> records) {
         IntegrationTestUtils.produceKeyValuesSynchronously(
             topic,
@@ -596,5 +706,30 @@ public class NamedTopologyIntegrationTest {
             producerConfig,
             CLUSTER.time
         );
+    }
+
+    private static class TrackingExceptionHandler implements StreamsUncaughtExceptionHandler {
+        private final Map<String, Queue<Throwable>> newErrorsByTopology = new HashMap<>();
+
+        @Override
+        public synchronized StreamThreadExceptionResponse handle(final Throwable exception) {
+            final String topologyName =
+                exception instanceof StreamsException && ((StreamsException) exception).taskId().isPresent() ?
+                    ((StreamsException) exception).taskId().get().topologyName()
+                    : null;
+
+            newErrorsByTopology.computeIfAbsent(topologyName, t -> new LinkedList<>()).add(exception);
+            if (exception.getCause() instanceof MissingSourceTopicException) {
+                return StreamThreadExceptionResponse.REPLACE_THREAD;
+            } else {
+                return StreamThreadExceptionResponse.SHUTDOWN_APPLICATION;
+            }
+        }
+
+        public synchronized Throwable nextError(final String topologyName) {
+            return newErrorsByTopology.containsKey(topologyName) ?
+                newErrorsByTopology.get(topologyName).poll() :
+                null;
+        }
     }
 }

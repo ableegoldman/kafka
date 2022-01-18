@@ -59,7 +59,7 @@ public class TopologyMetadata {
 
     // the "__" (double underscore) string is not allowed for topology names, so it's safe to use to indicate
     // that it's not a named topology
-    private static final String UNNAMED_TOPOLOGY = "__UNNAMED_TOPOLOGY__";
+    public static final String UNNAMED_TOPOLOGY = "__UNNAMED_TOPOLOGY__";
     private static final Pattern EMPTY_ZERO_LENGTH_PATTERN = Pattern.compile("");
 
     private final StreamsConfig config;
@@ -436,9 +436,32 @@ public class TopologyMetadata {
         return sourceTopics;
     }
 
-    public Map<Subtopology, TopicsInfo> topicGroups() {
+    public static String getTopologyNameOrElseUnnamed(final String topologyName) {
+        return topologyName == null ? UNNAMED_TOPOLOGY : topologyName;
+    }
+
+    /**
+     * @param topologiesToExclude the names of any topologies to exclude from the returned topic groups,
+     *                            eg because they have missing source topics and can't be processed yet
+     *
+     * @return                    flattened map of all subtopologies (from all topologies) to topics info
+     */
+    public Map<Subtopology, TopicsInfo> topicGroups(final Set<String> topologiesToExclude) {
         final Map<Subtopology, TopicsInfo> topicGroups = new HashMap<>();
-        applyToEachBuilder(b -> topicGroups.putAll(b.topicGroups()));
+        applyToEachBuilder(b -> {
+            if (!topologiesToExclude.contains(b.topologyName())) {
+                topicGroups.putAll(b.topicGroups());
+            }
+        });
+        return topicGroups;
+    }
+
+    /**
+     * @return    map from topology to its subtopologies and their topics info
+     */
+    public Map<String, Map<Subtopology, TopicsInfo>> allTopicGroups() {
+        final Map<String, Map<Subtopology, TopicsInfo>> topicGroups = new HashMap<>();
+        applyToEachBuilder(b -> topicGroups.put(b.topologyName(), b.topicGroups()));
         return topicGroups;
     }
 
