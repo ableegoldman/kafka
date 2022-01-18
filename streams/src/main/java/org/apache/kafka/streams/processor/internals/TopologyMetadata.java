@@ -21,6 +21,7 @@ import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.internals.KafkaFutureImpl;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.TopologyException;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.TaskId;
@@ -67,7 +68,9 @@ public class TopologyMetadata {
 
     private final ConcurrentNavigableMap<String, InternalTopologyBuilder> builders; // Keep sorted by topology name for readability
 
-    private java.util.function.Consumer<Throwable> streamsUncaughtExceptionHandler;
+    // Handler for recoverable StreamsExceptions which don't require killing/replacing the thread
+    private java.util.function.Consumer<Throwable> recoverableStreamsExceptionHandler;
+
     private ProcessorTopology globalTopology;
     private final Map<String, StateStore> globalStateStores = new HashMap<>();
     private final Set<String> allInputTopics = new HashSet<>();
@@ -193,15 +196,15 @@ public class TopologyMetadata {
     /**
      * Sets the streams uncaught exception handler.
      *
-     * @param streamsUncaughtExceptionHandler the user handler wrapped in shell to execute the action
+     * @param recoverableStreamsExceptionHandler the user handler wrapped in shell to execute the action
      */
-    public void setStreamsUncaughtExceptionHandler(final java.util.function.Consumer<Throwable> streamsUncaughtExceptionHandler) {
-        this.streamsUncaughtExceptionHandler = streamsUncaughtExceptionHandler;
+    public void setRecoverableStreamsExceptionHandler(final java.util.function.Consumer<Throwable> recoverableStreamsExceptionHandler) {
+        this.recoverableStreamsExceptionHandler = recoverableStreamsExceptionHandler;
     }
 
-    public void maybeInvokeUncaughtExceptionHandler(final Throwable throwable) {
-        if (streamsUncaughtExceptionHandler != null) {
-            streamsUncaughtExceptionHandler.accept(throwable);
+    public void maybeInvokeUncaughtExceptionHandler(final StreamsException exception) {
+        if (recoverableStreamsExceptionHandler != null) {
+            recoverableStreamsExceptionHandler.accept(exception);
         }
     }
 

@@ -28,6 +28,7 @@ import org.apache.kafka.streams.KafkaStreams.State;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.StreamsMetadata;
+import org.apache.kafka.streams.errors.MissingSourceTopicException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler;
 import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
@@ -75,9 +76,12 @@ import static org.apache.kafka.streams.KeyValue.pair;
 import static org.apache.kafka.streams.integration.utils.IntegrationTestUtils.safeUniqueTestName;
 import static org.apache.kafka.streams.integration.utils.IntegrationTestUtils.waitForApplicationState;
 import static org.apache.kafka.streams.integration.utils.IntegrationTestUtils.waitUntilMinKeyValueRecordsReceived;
+import static org.apache.kafka.test.TestUtils.retryOnExceptionWithTimeout;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
@@ -592,6 +596,10 @@ public class NamedTopologyIntegrationTest {
         topology1Builder.stream(INPUT_STREAM_1).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
         topology1Builder2.stream(INPUT_STREAM_1).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
 
+        final TrackingExceptionHandler handler = new  TrackingExceptionHandler();
+        streams.setUncaughtExceptionHandler(handler);
+        streams2.setUncaughtExceptionHandler(handler);
+
         streams.start(topology1Builder.build());
         streams2.start(topology1Builder2.build());
         waitForApplicationState(asList(streams, streams2), State.RUNNING, Duration.ofSeconds(30));
@@ -600,8 +608,16 @@ public class NamedTopologyIntegrationTest {
         topology2Builder.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_2);
         topology2Builder2.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_2);
 
+        assertThat(handler.nextError(TOPOLOGY_2), nullValue());
+
         streams.addNamedTopology(topology2Builder.build());
         streams2.addNamedTopology(topology2Builder2.build());
+
+        retryOnExceptionWithTimeout(() -> {
+            final Throwable error = handler.nextError(TOPOLOGY_2);
+            assertThat(error, notNullValue());
+            assertThat(error.getCause().getClass(), is(MissingSourceTopicException.class));
+        });
 
         try {
             CLUSTER.createTopic(NEW_STREAM, 2, 1);
@@ -618,9 +634,19 @@ public class NamedTopologyIntegrationTest {
         topology1Builder.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
         topology1Builder2.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
 
+        final TrackingExceptionHandler handler = new  TrackingExceptionHandler();
+        streams.setUncaughtExceptionHandler(handler);
+        streams2.setUncaughtExceptionHandler(handler);
+
         streams.start(topology1Builder.build());
         streams2.start(topology1Builder2.build());
         waitForApplicationState(asList(streams, streams2), State.RUNNING, Duration.ofSeconds(30));
+
+        retryOnExceptionWithTimeout(() -> {
+            final Throwable error = handler.nextError(TOPOLOGY_1);
+            assertThat(error, notNullValue());
+            assertThat(error.getCause().getClass(), is(MissingSourceTopicException.class));
+        });
 
         try {
             CLUSTER.createTopic(NEW_STREAM, 2, 1);
@@ -642,8 +668,7 @@ public class NamedTopologyIntegrationTest {
     }
 
     private static class TrackingExceptionHandler implements StreamsUncaughtExceptionHandler {
-        private final Map<String, Integer> errorCountByTopology = new HashMap<>();
-        private final Queue<Throwable> newErrorsByTopology = new LinkedList<>();
+        private final Map<String, Queue<Throwable>> newErrorsByTopology = new HashMap<>();
 
         @Override
         public synchronized StreamThreadExceptionResponse handle(final Throwable exception) {
@@ -652,12 +677,18 @@ public class NamedTopologyIntegrationTest {
                     ((StreamsException) exception).taskId().get().topologyName()
                     : null;
 
-            newErrorsByTopology.add(exception);
-            return StreamThreadExceptionResponse.SHUTDOWN_APPLICATION;
+            newErrorsByTopology.computeIfAbsent(topologyName, (t) -> new LinkedList<>()).add(exception);
+            if (exception.getCause() instanceof MissingSourceTopicException) {
+                return StreamThreadExceptionResponse.REPLACE_THREAD;
+            } else {
+                return StreamThreadExceptionResponse.SHUTDOWN_APPLICATION;
+            }
         }
 
-        public synchronized Throwable nextError() {
-            return newErrorsByTopology.poll();
+        public synchronized Throwable nextError(final String topologyName) {
+            return newErrorsByTopology.containsKey(topologyName) ?
+                newErrorsByTopology.get(topologyName).poll() :
+                null;
         }
     }
 }
