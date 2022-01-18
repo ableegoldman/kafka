@@ -677,7 +677,7 @@ public class NamedTopologyIntegrationTest {
                     ((StreamsException) exception).taskId().get().topologyName()
                     : null;
 
-            newErrorsByTopology.computeIfAbsent(topologyName, (t) -> new LinkedList<>()).add(exception);
+            newErrorsByTopology.computeIfAbsent(topologyName, t -> new LinkedList<>()).add(exception);
             if (exception.getCause() instanceof MissingSourceTopicException) {
                 return StreamThreadExceptionResponse.REPLACE_THREAD;
             } else {
