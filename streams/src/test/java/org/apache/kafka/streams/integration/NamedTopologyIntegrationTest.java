@@ -622,12 +622,12 @@ public class NamedTopologyIntegrationTest {
 
         // make sure the original topology can continue processing while waiting on the new source topics
         produceToInputTopics(INPUT_STREAM_1, singletonList(pair("A", 30L)));
-        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(singletonList(pair("A", 3L))));
+        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 1), equalTo(singletonList(pair("A", 3L))));
 
         try {
             CLUSTER.createTopic(NEW_STREAM, 2, 1);
             produceToInputTopics(NEW_STREAM, STANDARD_INPUT_DATA);
-            assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 1), equalTo(COUNT_OUTPUT_DATA));
+            assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 3), equalTo(COUNT_OUTPUT_DATA));
         } finally {
             CLUSTER.deleteTopicsAndWait(NEW_STREAM);
         }
