@@ -596,7 +596,7 @@ public class NamedTopologyIntegrationTest {
         topology1Builder.stream(INPUT_STREAM_1).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
         topology1Builder2.stream(INPUT_STREAM_1).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
 
-        final TrackingExceptionHandler handler = new  TrackingExceptionHandler();
+        final TrackingExceptionHandler handler = new TrackingExceptionHandler();
         streams.setUncaughtExceptionHandler(handler);
         streams2.setUncaughtExceptionHandler(handler);
 
@@ -613,23 +613,28 @@ public class NamedTopologyIntegrationTest {
         streams.addNamedTopology(topology2Builder.build());
         streams2.addNamedTopology(topology2Builder2.build());
 
+        // verify that the missing source topics were noticed and the handler invoked
         retryOnExceptionWithTimeout(() -> {
             final Throwable error = handler.nextError(TOPOLOGY_2);
             assertThat(error, notNullValue());
             assertThat(error.getCause().getClass(), is(MissingSourceTopicException.class));
         });
 
+        // make sure the original topology can continue processing while waiting on the new source topics
+        produceToInputTopics(INPUT_STREAM_1, singletonList(pair("A", 30L)));
+        assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_1, 3), equalTo(singletonList(pair("A", 3L))));
+
         try {
             CLUSTER.createTopic(NEW_STREAM, 2, 1);
             produceToInputTopics(NEW_STREAM, STANDARD_INPUT_DATA);
-            assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 3), equalTo(COUNT_OUTPUT_DATA));
+            assertThat(waitUntilMinKeyValueRecordsReceived(consumerConfig, OUTPUT_STREAM_2, 1), equalTo(COUNT_OUTPUT_DATA));
         } finally {
             CLUSTER.deleteTopicsAndWait(NEW_STREAM);
         }
     }
 
     @Test
-    public void shouldWaitForMissingInputTopicsToBeCreatedWhileOtherTopologyContinuesProcessing() throws Exception {
+    public void shouldWaitForMissingInputTopicsToBeCreated() throws Exception {
         setupSecondKafkaStreams();
         topology1Builder.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
         topology1Builder2.stream(NEW_STREAM).groupBy((k, v) -> k).count(IN_MEMORY_STORE).toStream().to(OUTPUT_STREAM_1);
