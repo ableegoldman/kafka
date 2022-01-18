@@ -516,7 +516,16 @@ public class StreamsPartitionAssignor implements ConsumerPartitionAssignor, Conf
             if (!taskManager.topologyMetadata().hasNamedTopologies()) {
                 throw new MissingSourceTopicException("Missing source topics.");
             } else {
-
+                for (final Map.Entry<String, Set<String>> topology : repartitionTopics.missingUserInputTopicsPerTopology().entrySet()) {
+                    final String topologyName = topology.getKey();
+                    final StreamsException exception = new StreamsException(
+                        new MissingSourceTopicException(String.format(
+                            "Missing source topics %s for topology %s",
+                            topology.getValue(),
+                            topologyName)),
+                        new TaskId(-1, -1, topologyName));
+                    taskManager.topologyMetadata().maybeInvokeUncaughtExceptionHandler(exception);
+                }
             }
         }
         return repartitionTopics;

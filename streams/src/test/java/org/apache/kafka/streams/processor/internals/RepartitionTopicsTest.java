@@ -169,7 +169,11 @@ public class RepartitionTopicsTest {
             "[test] "
         );
 
-        assertThat(repartitionTopics.setup(), equalTo(Collections.singletonMap(UNNAMED_TOPOLOGY, missingSourceTopics)));
+        assertThat(repartitionTopics.setup(), equalTo(false));
+        assertThat(
+            repartitionTopics.missingUserInputTopicsPerTopology(),
+            equalTo(Collections.singletonMap(UNNAMED_TOPOLOGY, missingSourceTopics))
+        );
     }
 
     @Test

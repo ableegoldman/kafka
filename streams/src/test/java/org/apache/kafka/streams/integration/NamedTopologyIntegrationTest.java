@@ -28,6 +28,8 @@ import org.apache.kafka.streams.KafkaStreams.State;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.StreamsMetadata;
+import org.apache.kafka.streams.errors.StreamsException;
+import org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler;
 import org.apache.kafka.streams.integration.utils.EmbeddedKafkaCluster;
 import org.apache.kafka.streams.integration.utils.IntegrationTestUtils;
 import org.apache.kafka.streams.kstream.Consumed;
@@ -48,6 +50,10 @@ import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.utils.UniqueTopicSerdeScope;
 import org.apache.kafka.test.TestUtils;
 
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Queue;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -633,5 +639,25 @@ public class NamedTopologyIntegrationTest {
             producerConfig,
             CLUSTER.time
         );
+    }
+
+    private static class TrackingExceptionHandler implements StreamsUncaughtExceptionHandler {
+        private final Map<String, Integer> errorCountByTopology = new HashMap<>();
+        private final Queue<Throwable> newErrorsByTopology = new LinkedList<>();
+
+        @Override
+        public synchronized StreamThreadExceptionResponse handle(final Throwable exception) {
+            final String topologyName =
+                exception instanceof StreamsException && ((StreamsException) exception).taskId().isPresent() ?
+                    ((StreamsException) exception).taskId().get().topologyName()
+                    : null;
+
+            newErrorsByTopology.add(exception);
+            return StreamThreadExceptionResponse.SHUTDOWN_APPLICATION;
+        }
+
+        public synchronized Throwable nextError() {
+            return newErrorsByTopology.poll();
+        }
     }
 }

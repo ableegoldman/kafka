@@ -67,6 +67,7 @@ public class TopologyMetadata {
 
     private final ConcurrentNavigableMap<String, InternalTopologyBuilder> builders; // Keep sorted by topology name for readability
 
+    private java.util.function.Consumer<Throwable> streamsUncaughtExceptionHandler;
     private ProcessorTopology globalTopology;
     private final Map<String, StateStore> globalStateStores = new HashMap<>();
     private final Set<String> allInputTopics = new HashSet<>();
@@ -186,6 +187,21 @@ public class TopologyMetadata {
             } finally {
                 unlock();
             }
+        }
+    }
+
+    /**
+     * Sets the streams uncaught exception handler.
+     *
+     * @param streamsUncaughtExceptionHandler the user handler wrapped in shell to execute the action
+     */
+    public void setStreamsUncaughtExceptionHandler(final java.util.function.Consumer<Throwable> streamsUncaughtExceptionHandler) {
+        this.streamsUncaughtExceptionHandler = streamsUncaughtExceptionHandler;
+    }
+
+    public void maybeInvokeUncaughtExceptionHandler(final Throwable throwable) {
+        if (streamsUncaughtExceptionHandler != null) {
+            streamsUncaughtExceptionHandler.accept(throwable);
         }
     }
 

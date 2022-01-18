@@ -457,11 +457,12 @@ public class KafkaStreams implements AutoCloseable {
      * @throws NullPointerException if streamsUncaughtExceptionHandler is null.
      */
     public void setUncaughtExceptionHandler(final StreamsUncaughtExceptionHandler streamsUncaughtExceptionHandler) {
+        Objects.requireNonNull(streamsUncaughtExceptionHandler);
         final Consumer<Throwable> handler = exception -> handleStreamsUncaughtException(exception, streamsUncaughtExceptionHandler);
         synchronized (stateLock) {
             if (state.hasNotStarted()) {
                 this.streamsUncaughtExceptionHandler = handler;
-                Objects.requireNonNull(streamsUncaughtExceptionHandler);
+                topologyMetadata.setStreamsUncaughtExceptionHandler(handler);
                 processStreamThread(thread -> thread.setStreamsUncaughtExceptionHandler(handler));
                 if (globalStreamThread != null) {
                     globalStreamThread.setUncaughtExceptionHandler(handler);
