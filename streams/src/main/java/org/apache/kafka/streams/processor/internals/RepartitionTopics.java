@@ -138,7 +138,7 @@ public class RepartitionTopics {
                               + "this can be due to the consumer client's metadata being stale or because they have "
                               + "not been created yet. Please verify that you have created all input topics; if they "
                               + "do exist, you just need to wait for the metadata to be updated, at which time a new "
-                              + "rebalance will be kicked off automatically and the topology will retried at that time."
+                              + "rebalance will be kicked off automatically and the topology will be retried at that time."
                               + topologyName, missingSourceTopics);
             }
         }
