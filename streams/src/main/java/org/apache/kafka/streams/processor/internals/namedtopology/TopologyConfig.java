@@ -110,6 +110,7 @@ public class TopologyConfig extends AbstractConfig {
         this(null, globalAppConfigs, new Properties());
     }
 
+    @SuppressWarnings("deprecation")
     public TopologyConfig(final String topologyName, final StreamsConfig globalAppConfigs, final Properties topologyOverrides) {
         super(CONFIG, topologyOverrides, false);
 
@@ -124,27 +125,26 @@ public class TopologyConfig extends AbstractConfig {
             log.info("Topology {} is overriding {} to {}", topologyName, BUFFERED_RECORDS_PER_PARTITION_CONFIG, maxBufferedSize);
         } else {
             maxBufferedSize = globalAppConfigs.originals().containsKey(StreamsConfig.BUFFERED_RECORDS_PER_PARTITION_CONFIG)
-                    ? globalAppConfigs.getInt(StreamsConfig.BUFFERED_RECORDS_PER_PARTITION_CONFIG) : -1;
+                ? globalAppConfigs.getInt(StreamsConfig.BUFFERED_RECORDS_PER_PARTITION_CONFIG) : -1;
         }
 
-        if (isTopologyOverride(STATESTORE_CACHE_MAX_BYTES_CONFIG, topologyOverrides) ||
-                isTopologyOverride(CACHE_MAX_BYTES_BUFFERING_CONFIG, topologyOverrides)) {
+        if (isTopologyOverride(STATESTORE_CACHE_MAX_BYTES_CONFIG, topologyOverrides)) {
+            cacheSize = getLong(STATESTORE_CACHE_MAX_BYTES_CONFIG);
+            log.info("Topology {} is overriding {} to {}", topologyName, STATESTORE_CACHE_MAX_BYTES_CONFIG, cacheSize);
 
-            if (isTopologyOverride(STATESTORE_CACHE_MAX_BYTES_CONFIG, topologyOverrides) && isTopologyOverride(CACHE_MAX_BYTES_BUFFERING_CONFIG, topologyOverrides)) {
-                cacheSize = getLong(STATESTORE_CACHE_MAX_BYTES_CONFIG);
-                log.info("Topology {} is using both {} and deprecated config {}. overriding {} to {}",
-                        topologyName,
-                        STATESTORE_CACHE_MAX_BYTES_CONFIG,
-                        CACHE_MAX_BYTES_BUFFERING_CONFIG,
-                        STATESTORE_CACHE_MAX_BYTES_CONFIG,
-                        cacheSize);
-            } else if (isTopologyOverride(CACHE_MAX_BYTES_BUFFERING_CONFIG, topologyOverrides)) {
-                cacheSize = getLong(CACHE_MAX_BYTES_BUFFERING_CONFIG);
-                log.info("Topology {} is using deprecated config {}. overriding {} to {}", topologyName, CACHE_MAX_BYTES_BUFFERING_CONFIG, CACHE_MAX_BYTES_BUFFERING_CONFIG, cacheSize);
-            } else {
-                cacheSize = getLong(STATESTORE_CACHE_MAX_BYTES_CONFIG);
-                log.info("Topology {} is overriding {} to {}", topologyName, STATESTORE_CACHE_MAX_BYTES_CONFIG, cacheSize);
+            if (isTopologyOverride(CACHE_MAX_BYTES_BUFFERING_CONFIG, topologyOverrides)) {
+                log.warn("Topology {} is overriding both {} and the deprecated config {}, to {} and {} respectively. The value for {} will be used in case of a discrepancy.",
+                         topologyName, STATESTORE_CACHE_MAX_BYTES_CONFIG, CACHE_MAX_BYTES_BUFFERING_CONFIG,
+                         getLong(STATESTORE_CACHE_MAX_BYTES_CONFIG), getLong(STATESTORE_CACHE_MAX_BYTES_CONFIG),
+                         STATESTORE_CACHE_MAX_BYTES_CONFIG
+                );
             }
+        } else if (isTopologyOverride(CACHE_MAX_BYTES_BUFFERING_CONFIG, topologyOverrides)) {
+            log.warn("Topology {} is using the deprecated {} config. Please update your code to use {} instead",
+                     topologyName, CACHE_MAX_BYTES_BUFFERING_CONFIG, STATESTORE_CACHE_MAX_BYTES_CONFIG);
+
+            cacheSize = getLong(CACHE_MAX_BYTES_BUFFERING_CONFIG);
+            log.info("Topology {} is overriding {} to {}", topologyName, CACHE_MAX_BYTES_BUFFERING_CONFIG, cacheSize);
         } else {
             cacheSize = globalAppConfigs.getLong(STATESTORE_CACHE_MAX_BYTES_CONFIG);
         }

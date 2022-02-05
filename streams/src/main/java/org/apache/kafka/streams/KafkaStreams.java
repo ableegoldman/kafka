@@ -103,6 +103,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.StreamsConfig.METRICS_RECORDING_LEVEL_CONFIG;
@@ -1004,6 +1005,35 @@ public class KafkaStreams implements AutoCloseable {
         threadState.put(streamThread.getId(), streamThread.state());
         queryableStoreProvider.addStoreProviderForThread(streamThread.getName(), new StreamThreadStateStoreProvider(streamThread));
         return streamThread;
+    }
+
+    public static long getCacheTotalSize(final StreamsConfig streamsConfig) {
+        return getTotalCacheSize(configString -> streamsConfig.originals().containsKey(configString), (streamsConfig::getLong));
+
+    }
+
+    public static long getTotalCacheSize(final Function<String, Boolean> cacheConfigIsSet, final Function<String, Long> getCacheSize) {
+        // both deprecated and new config set.
+        if (cacheConfigIsSet.apply(CACHE_MAX_BYTES_BUFFERING_CONFIG) && cacheConfigIsSet.apply(STATESTORE_CACHE_MAX_BYTES_CONFIG)) {
+            log.warn("Both the old, deprecated config {} and its new replacement config {} were set. You should "
+                         + "remove any usages of the deprecated config and set the cache size via {} only.",
+                     CACHE_MAX_BYTES_BUFFERING_CONFIG, STATESTORE_CACHE_MAX_BYTES_CONFIG, STATESTORE_CACHE_MAX_BYTES_CONFIG);
+            if (!getCacheSize.apply(CACHE_MAX_BYTES_BUFFERING_CONFIG).equals(getCacheSize.apply(STATESTORE_CACHE_MAX_BYTES_CONFIG))) {
+                log.warn("Config {} and {} have been set to different values. {} will be used for the total cache size",
+                         CACHE_MAX_BYTES_BUFFERING_CONFIG,
+                         STATESTORE_CACHE_MAX_BYTES_CONFIG,
+                         STATESTORE_CACHE_MAX_BYTES_CONFIG);
+            }
+            return getCacheSize.apply(STATESTORE_CACHE_MAX_BYTES_CONFIG);
+        } else if (cacheConfigIsSet.apply(CACHE_MAX_BYTES_BUFFERING_CONFIG)) {
+            // only deprecated config set.
+            log.warn("The config {} has been deprecated and should  be removed. You can set the cache size via the"
+                         + "new {} config instead.", CACHE_MAX_BYTES_BUFFERING_CONFIG, STATESTORE_CACHE_MAX_BYTES_CONFIG);
+            return getCacheSize.apply(CACHE_MAX_BYTES_BUFFERING_CONFIG);
+        } else {
+            // only new or no config set. Use default or user specified value.
+            return getCacheSize.apply(STATESTORE_CACHE_MAX_BYTES_CONFIG);
+        }
     }
 
     private static Metrics getMetrics(final StreamsConfig config, final Time time, final String clientId) {

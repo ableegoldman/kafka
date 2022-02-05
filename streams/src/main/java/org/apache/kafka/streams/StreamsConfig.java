@@ -52,6 +52,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.function.Function;
 
 import static org.apache.kafka.common.IsolationLevel.READ_COMMITTED;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
@@ -367,7 +368,7 @@ public class StreamsConfig extends AbstractConfig {
     public static final String CACHE_MAX_BYTES_BUFFERING_CONFIG = "cache.max.bytes.buffering";
     public static final String CACHE_MAX_BYTES_BUFFERING_DOC = "Maximum number of memory bytes to be used for buffering across all threads";
 
-    /** {@statestore.cache.max.bytes} */
+    /** {@code statestore.cache.max.bytes} */
     @SuppressWarnings("WeakerAccess")
     public static final String STATESTORE_CACHE_MAX_BYTES_CONFIG = "statestore.cache.max.bytes";
     public static final String STATESTORE_CACHE_MAX_BYTES_DOC = "Maximum number of memory bytes to be used for statestore cache across all threads";
@@ -1189,8 +1190,9 @@ public class StreamsConfig extends AbstractConfig {
         return consumerProps;
     }
 
-    private void checkIfUnexpectedUserSpecifiedConsumerConfig(final Map<String, Object> clientProvidedProps,
-                                                              final String[] nonConfigurableConfigs) {
+    private static void checkIfUnexpectedUserSpecifiedConsumerConfig(final Map<String, Object> clientProvidedProps,
+                                                                     final String[] nonConfigurableConfigs,
+                                                                     final boolean eosEnabled) {
         // Streams does not allow users to configure certain consumer/producer configurations, for example,
         // enable.auto.commit. In cases where user tries to override such non-configurable
         // consumer/producer configurations, log a warning and remove the user defined value from the Map.
@@ -1235,7 +1237,7 @@ public class StreamsConfig extends AbstractConfig {
         }
     }
 
-    private void verifyMaxInFlightRequestPerConnection(final Object maxInFlightRequests) {
+    private static void verifyMaxInFlightRequestPerConnection(final Object maxInFlightRequests) {
         if (maxInFlightRequests != null) {
             final int maxInFlightRequestsAsInteger;
             if (maxInFlightRequests instanceof Integer) {
@@ -1431,23 +1433,31 @@ public class StreamsConfig extends AbstractConfig {
     }
 
     public long getTotalCacheSize() {
-        // both deprecated and new config set. Warn and use the new one.
-        if (originals().containsKey(CACHE_MAX_BYTES_BUFFERING_CONFIG) && originals().containsKey(STATESTORE_CACHE_MAX_BYTES_CONFIG)) {
-            log.warn("Use of deprecated config {} noticed.", CACHE_MAX_BYTES_BUFFERING_CONFIG);
-            if (!getLong(CACHE_MAX_BYTES_BUFFERING_CONFIG).equals(getLong(STATESTORE_CACHE_MAX_BYTES_CONFIG))) {
-                log.warn("Config {} and {} have been set to different values. {} would be considered as total cache size",
-                        CACHE_MAX_BYTES_BUFFERING_CONFIG,
-                        STATESTORE_CACHE_MAX_BYTES_CONFIG,
-                        STATESTORE_CACHE_MAX_BYTES_CONFIG);
+        return getTotalCacheSize(config -> originals().containsKey(config), (this::getLong));
+    }
+
+    public static long getTotalCacheSize(final Function<String, Boolean> cacheConfigIsSet, final Function<String, Long> getCacheSize) {
+        // both deprecated and new config set.
+        if (cacheConfigIsSet.apply(CACHE_MAX_BYTES_BUFFERING_CONFIG) && cacheConfigIsSet.apply(STATESTORE_CACHE_MAX_BYTES_CONFIG)) {
+            log.warn("Both the old, deprecated config {} and its new replacement config {} were set. You should "
+                         + "remove any usages of the deprecated config and set the cache size via {} only.",
+                     CACHE_MAX_BYTES_BUFFERING_CONFIG, STATESTORE_CACHE_MAX_BYTES_CONFIG, STATESTORE_CACHE_MAX_BYTES_CONFIG);
+            if (!getCacheSize.apply(CACHE_MAX_BYTES_BUFFERING_CONFIG).equals(getCacheSize.apply(STATESTORE_CACHE_MAX_BYTES_CONFIG))) {
+                log.warn("Config {} and {} have been set to different values. {} will be used for the total cache size",
+                         CACHE_MAX_BYTES_BUFFERING_CONFIG,
+                         STATESTORE_CACHE_MAX_BYTES_CONFIG,
+                         STATESTORE_CACHE_MAX_BYTES_CONFIG);
             }
-            return getLong(STATESTORE_CACHE_MAX_BYTES_CONFIG);
-        } else if (originals().containsKey(CACHE_MAX_BYTES_BUFFERING_CONFIG)) {
+            return getCacheSize.apply(STATESTORE_CACHE_MAX_BYTES_CONFIG);
+        } else if (cacheConfigIsSet.apply(CACHE_MAX_BYTES_BUFFERING_CONFIG)) {
             // only deprecated config set.
-            log.warn("Use of deprecated config {} noticed.", CACHE_MAX_BYTES_BUFFERING_CONFIG);
-            return getLong(CACHE_MAX_BYTES_BUFFERING_CONFIG);
+            log.warn("The config {} has been deprecated and should  be removed. You can set the cache size via the"
+                         + "new {} config instead.", CACHE_MAX_BYTES_BUFFERING_CONFIG, STATESTORE_CACHE_MAX_BYTES_CONFIG);
+            return getCacheSize.apply(CACHE_MAX_BYTES_BUFFERING_CONFIG);
+        } else {
+            // only new or no config set. Use default or user specified value.
+            return getCacheSize.apply(STATESTORE_CACHE_MAX_BYTES_CONFIG);
         }
-        // only new or no config set. Use default or user specified value.
-        return getLong(STATESTORE_CACHE_MAX_BYTES_CONFIG);
     }
 
     /**

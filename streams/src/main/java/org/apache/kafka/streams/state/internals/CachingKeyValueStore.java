@@ -223,23 +223,22 @@ public class CachingKeyValueStore
 
             // this is an optimization: if this key did not exist in underlying store and also not in the cache,
             // we can skip flushing to downstream as well as writing to underlying store
-            if (rawNewValue != null || rawOldValue != null) {
-                // we need to get the old values if needed, and then put to store, and then flush
-                final ProcessorRecordContext current = context.recordContext();
-                context.setRecordContext(entry.entry().context());
-                wrapped().put(entry.key(), entry.newValue());
+            // we need to get the old values if needed, and then put to store, and then flush
+            final ProcessorRecordContext current = context.recordContext();
+            context.setRecordContext(entry.entry().context());
+            wrapped().put(entry.key(), entry.newValue());
 
-                try {
-                    flushListener.apply(
-                        new Record<>(
-                            entry.key().get(),
-                            new Change<>(rawNewValue, sendOldValues ? rawOldValue : null),
-                            entry.entry().context().timestamp(),
-                            entry.entry().context().headers()));
-                } finally {
-                    context.setRecordContext(current);
-                }
+            try {
+                flushListener.apply(
+                    new Record<>(
+                        entry.key().get(),
+                        new Change<>(rawNewValue, sendOldValues ? rawOldValue : null),
+                        entry.entry().context().timestamp(),
+                        entry.entry().context().headers()));
+            } finally {
+                context.setRecordContext(current);
             }
+
         } else {
             wrapped().put(entry.key(), entry.newValue());
         }
