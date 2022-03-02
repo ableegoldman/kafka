@@ -18,6 +18,9 @@ package org.apache.kafka.streams.processor.internals.namedtopology;
 
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.internals.KafkaFutureImpl;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KafkaStreams.State;
+import org.apache.kafka.streams.errors.StreamsException;
 
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
@@ -25,14 +28,18 @@ import java.util.concurrent.ExecutionException;
 public class RemoveNamedTopologyResult {
     private final KafkaFuture<Void> removeTopologyFuture;
     private final KafkaFuture<Void> deleteOffsetsResult;
+    private final KafkaStreams kafkaStreams;
 
-    public RemoveNamedTopologyResult(final KafkaFuture<Void> removeTopologyFuture, final KafkaFuture<Void> deleteOffsetsResult) {
+    public RemoveNamedTopologyResult(final KafkaFuture<Void> removeTopologyFuture,
+                                     final KafkaFuture<Void> deleteOffsetsResult,
+                                     final KafkaStreams kafkaStreams) {
         this.removeTopologyFuture = removeTopologyFuture;
         this.deleteOffsetsResult = deleteOffsetsResult;
+        this.kafkaStreams = kafkaStreams;
     }
 
-    public RemoveNamedTopologyResult(final KafkaFuture<Void> removeTopologyFuture) {
-        this(removeTopologyFuture, null);
+    public RemoveNamedTopologyResult(final KafkaFuture<Void> removeTopologyFuture, final KafkaStreams kafkaStreams) {
+        this(removeTopologyFuture, null, kafkaStreams);
         Objects.requireNonNull(removeTopologyFuture);
     }
 
@@ -79,6 +86,13 @@ public class RemoveNamedTopologyResult {
             });
         }
 
+        if (kafkaStreams.state() == State.NOT_RUNNING && !result.isDone()) {
+            result.complete(null);
+        } else if (kafkaStreams.state() == State.ERROR && !result.isDone()) {
+            result.completeExceptionally(
+                new StreamsException("Application went into the ERROR state before completing the addNamedTopology operation.")
+            );
+        }
 
         return result;
     }

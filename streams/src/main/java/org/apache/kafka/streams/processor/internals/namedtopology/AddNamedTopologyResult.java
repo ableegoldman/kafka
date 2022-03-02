@@ -17,15 +17,20 @@
 package org.apache.kafka.streams.processor.internals.namedtopology;
 
 import org.apache.kafka.common.KafkaFuture;
+import org.apache.kafka.common.internals.KafkaFutureImpl;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KafkaStreams.State;
 import org.apache.kafka.streams.errors.StreamsException;
 import java.util.concurrent.ExecutionException;
 
 public class AddNamedTopologyResult {
 
-    private final KafkaFuture<Void> addTopologyFuture;
+    private final KafkaFutureImpl<Void> addTopologyFuture;
+    private final KafkaStreams kafkaStreams;
 
-    public AddNamedTopologyResult(final KafkaFuture<Void> addTopologyFuture) {
+    AddNamedTopologyResult(final KafkaFutureImpl<Void> addTopologyFuture, final KafkaStreams kafkaStreams) {
         this.addTopologyFuture = addTopologyFuture;
+        this.kafkaStreams = kafkaStreams;
     }
 
     /**
@@ -34,6 +39,13 @@ public class AddNamedTopologyResult {
      * any others until its addition has been completed by all instances of the application.
      */
     public KafkaFuture<Void> all() {
+        if (kafkaStreams.state() == State.NOT_RUNNING && !addTopologyFuture.isDone()) {
+            addTopologyFuture.complete(null);
+        } else if (kafkaStreams.state() == State.ERROR && !addTopologyFuture.isDone()) {
+            addTopologyFuture.completeExceptionally(
+                new StreamsException("Application went into the ERROR state before completing the addNamedTopology operation.")
+            );
+        }
         return addTopologyFuture;
     }
 
@@ -51,8 +63,6 @@ public class AddNamedTopologyResult {
             } else {
                 return new StreamsException(e.getCause());
             }
-        } catch (final InterruptedException e) {
-            return null;
         }
     }
 }

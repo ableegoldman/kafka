@@ -181,7 +181,7 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
         } else {
             topologyMetadata.registerAndBuildNewTopology(future, newTopology.internalTopologyBuilder());
         }
-        return new AddNamedTopologyResult(future);
+        return new AddNamedTopologyResult(future, this);
     }
 
     /**
@@ -273,10 +273,10 @@ public class KafkaStreamsNamedTopologyWrapper extends KafkaStreams {
                     }
                     removeTopologyFuture.complete(null);
                 });
-                return new RemoveNamedTopologyResult(removeTopologyFuture,  removeTopologyFuture);
+                return new RemoveNamedTopologyResult(removeTopologyFuture,  removeTopologyFuture, this);
             }
         }
-        return new RemoveNamedTopologyResult(removeTopologyFuture);
+        return new RemoveNamedTopologyResult(removeTopologyFuture, this);
     }
 
     /**
