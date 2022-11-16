@@ -26,6 +26,7 @@ import java.util.Collections;
 
 import static org.apache.kafka.streams.internals.StreamsConfigUtils.ProcessingMode.EXACTLY_ONCE_ALPHA;
 import static org.apache.kafka.streams.internals.StreamsConfigUtils.ProcessingMode.EXACTLY_ONCE_V2;
+import static org.apache.kafka.test.StreamsTestUtils.TaskBuilder.statelessTask;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -65,9 +66,7 @@ public class TaskExecutorTest {
 
     @Test
     public void testCommitWithOpenTransactionButNoOffsetsEOSV1() {
-        final TaskId taskId = new TaskId(0, 0);
-        final Task task = mock(Task.class);
-        when(task.id()).thenReturn(taskId);
+        final StreamTask task = statelessTask(new TaskId(0, 0)).build();
 
         final Tasks tasks = mock(Tasks.class);
         final ConsumerGroupMetadata groupMetadata = mock(ConsumerGroupMetadata.class);
@@ -78,7 +77,7 @@ public class TaskExecutorTest {
         final StreamsProducer producer = mock(StreamsProducer.class);
         final TaskExecutionMetadata metadata = mock(TaskExecutionMetadata.class);
         when(metadata.processingMode()).thenReturn(EXACTLY_ONCE_ALPHA);
-        when(taskManager.streamsProducerForTask(taskId)).thenReturn(producer);
+        when(taskManager.streamsProducerForTask(task.id(*- b))).thenReturn(producer);
         when(producer.transactionInFlight()).thenReturn(true);
 
         final TaskExecutor taskExecutor = new TaskExecutor(tasks, taskManager, metadata, new LogContext());
