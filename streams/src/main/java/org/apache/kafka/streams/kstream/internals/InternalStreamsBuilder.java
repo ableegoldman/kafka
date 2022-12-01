@@ -37,6 +37,7 @@ import org.apache.kafka.streams.kstream.internals.graph.GraphNode;
 import org.apache.kafka.streams.kstream.internals.graph.StreamStreamJoinNode;
 import org.apache.kafka.streams.kstream.internals.graph.TableSourceNode;
 import org.apache.kafka.streams.kstream.internals.graph.WindowedStreamProcessorNode;
+import org.apache.kafka.streams.processor.StreamPartitioner;
 import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.StoreBuilder;
@@ -84,6 +85,10 @@ public class InternalStreamsBuilder implements InternalNameProvider {
 
     public InternalStreamsBuilder(final InternalTopologyBuilder internalTopologyBuilder) {
         this.internalTopologyBuilder = internalTopologyBuilder;
+    }
+
+    public <K, V> StreamPartitioner<K, V> defaultStreamPartitioner() {
+        return internalTopologyBuilder.defaultStreamPartitioner();
     }
 
     public <K, V> KStream<K, V> stream(final Collection<String> topics,

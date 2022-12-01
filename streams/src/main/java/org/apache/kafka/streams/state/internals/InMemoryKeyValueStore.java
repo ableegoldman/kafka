@@ -51,7 +51,7 @@ public class InMemoryKeyValueStore implements KeyValueStore<Bytes, byte[]> {
     private static final Logger LOG = LoggerFactory.getLogger(InMemoryKeyValueStore.class);
 
     private final String name;
-    private final NavigableMap<Bytes, byte[]> map = new TreeMap<>();
+    private final ConcurrentNavigableMap<Bytes, byte[]> map = new TreeMap<>();
     private final Position position = Position.emptyPosition();
     private volatile boolean open = false;
     private StateStoreContext context;

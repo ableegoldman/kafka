@@ -508,6 +508,12 @@ public class StreamsConfig extends AbstractConfig {
     public static final String DEFAULT_DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG = "default.deserialization.exception.handler";
     public static final String DEFAULT_DESERIALIZATION_EXCEPTION_HANDLER_CLASS_DOC = "Exception handling class that implements the <code>org.apache.kafka.streams.errors.DeserializationExceptionHandler</code> interface.";
 
+    /** {@code default.streams.partitioner.class} */
+    @SuppressWarnings("WeakerAccess")
+    public static final String DEFAULT_STREAM_PARTITIONER_CLASS_CONFIG = "default.stream.partitioner.class";
+    private static final String DEFAULT_STREAM_PARTITIONER_CLASS_DOC = "Default partitioning class that implements the <code>org.apache.kafka.streams.processor.StreamPartitioner</code> interface. "
+        + "Will be used for all sink nodes unless overridden by another custom partitioner";
+
     /** {@code default.production.exception.handler} */
     @SuppressWarnings("WeakerAccess")
     public static final String DEFAULT_PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG = "default.production.exception.handler";
@@ -924,6 +930,11 @@ public class StreamsConfig extends AbstractConfig {
                     atLeast(0),
                     Importance.LOW,
                     COMMIT_INTERVAL_MS_DOC)
+            .define(DEFAULT_STREAM_PARTITIONER_CLASS_CONFIG,
+                    Type.STRING,
+                    null,
+                    Importance.LOW,
+                    DEFAULT_STREAM_PARTITIONER_CLASS_DOC)
             .define(REPARTITION_PURGE_INTERVAL_MS_CONFIG,
                     Type.LONG,
                     DEFAULT_COMMIT_INTERVAL_MS,

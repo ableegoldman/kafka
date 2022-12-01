@@ -17,10 +17,13 @@
 package org.apache.kafka.streams.internals;
 
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.processor.StreamPartitioner;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.apache.kafka.streams.StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG;
+import static org.apache.kafka.streams.StreamsConfig.DEFAULT_STREAM_PARTITIONER_CLASS_CONFIG;
 import static org.apache.kafka.streams.StreamsConfig.STATESTORE_CACHE_MAX_BYTES_CONFIG;
 
 public class StreamsConfigUtils {
@@ -96,5 +99,14 @@ public class StreamsConfigUtils {
         }
         // only new or no config set. Use default or user specified value.
         return config.getLong(STATESTORE_CACHE_MAX_BYTES_CONFIG);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <K, V> StreamPartitioner<K, V> getStreamPartitioner(StreamsConfig config, StreamPartitioner<K, V> partitionerOverride) {
+        if (partitionerOverride != null) {
+            return partitionerOverride;
+        } else {
+            return config.getConfiguredInstance(DEFAULT_STREAM_PARTITIONER_CLASS_CONFIG, StreamPartitioner.class);
+        }
     }
 }

@@ -2197,4 +2197,8 @@ public class InternalTopologyBuilder {
     public synchronized Map<String, StateStoreFactory<?>> stateStores() {
         return stateFactories;
     }
+
+    public <K, V> StreamPartitioner<K, V> defaultStreamPartitioner() {
+        return topologyConfigs.defaultStreamPartitioner;
+    }
 }

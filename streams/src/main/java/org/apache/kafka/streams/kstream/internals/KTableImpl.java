@@ -1121,7 +1121,7 @@ public class KTableImpl<K, S, V> extends AbstractStream<K, V> implements KTable<
 
         final StreamPartitioner<KO, SubscriptionWrapper<K>> subscriptionSinkPartitioner =
             tableJoinedInternal.otherPartitioner() == null
-                ? null
+                ?
                 : (topic, key, val, numPartitions) ->
                     tableJoinedInternal.otherPartitioner().partition(topic, key, null, numPartitions);
 

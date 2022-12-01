@@ -31,6 +31,7 @@ import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.FailOnInvalidTimestamp;
+import org.apache.kafka.streams.processor.StreamPartitioner;
 import org.apache.kafka.streams.processor.TimestampExtractor;
 import org.apache.kafka.streams.processor.internals.StreamsPartitionAssignor;
 import org.apache.kafka.common.utils.LogCaptureAppender;
@@ -56,6 +57,7 @@ import static org.apache.kafka.common.IsolationLevel.READ_UNCOMMITTED;
 import static org.apache.kafka.common.utils.Utils.mkSet;
 import static org.apache.kafka.streams.StreamsConfig.AT_LEAST_ONCE;
 import static org.apache.kafka.streams.StreamsConfig.DEFAULT_DSL_STORE_CONFIG;
+import static org.apache.kafka.streams.StreamsConfig.DEFAULT_STREAM_PARTITIONER_CLASS_CONFIG;
 import static org.apache.kafka.streams.StreamsConfig.EXACTLY_ONCE;
 import static org.apache.kafka.streams.StreamsConfig.EXACTLY_ONCE_BETA;
 import static org.apache.kafka.streams.StreamsConfig.EXACTLY_ONCE_V2;
@@ -1366,6 +1368,21 @@ public class StreamsConfigTest {
     public void shouldNotEnableAnyOptimizationsWithNoOptimizationConfig() {
         final Set<String> configs = StreamsConfig.verifyTopologyOptimizationConfigs(StreamsConfig.NO_OPTIMIZATION);
         assertEquals(0, configs.size());
+    }
+
+    @Test
+    public void shouldDefaultStreamPartitionerClass() {
+        props.put(DEFAULT_STREAM_PARTITIONER_CLASS_CONFIG, MyStreamPartitioner.class);
+        assertTrue(props.contains("default.stream.partitioner.class"));
+        final StreamsConfig config = new StreamsConfig(props);
+        assertEquals(config.getString(DEFAULT_STREAM_PARTITIONER_CLASS_CONFIG), MyStreamPartitioner.class.getName());
+    }
+
+    static class MyStreamPartitioner<K, V> implements StreamPartitioner<K, V> {
+        @Override
+        public Integer partition(final String topic, final Object key, final Object value, final int numPartitions) {
+            return null;
+        }
     }
 
     static class MisconfiguredSerde implements Serde<Object> {
