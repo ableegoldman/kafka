@@ -43,16 +43,17 @@ public final class AssignorConfiguration {
     private final String logPrefix;
     private final Logger log;
     private final ReferenceContainer referenceContainer;
+    private final AssignmentListener assignmentListener;
 
     private final StreamsConfig streamsConfig;
-    private final Map<String, ?> internalConfigs;
+    private final AssignmentConfigs assignmentConfigs;
 
     public AssignorConfiguration(final Map<String, ?> configs) {
         // NOTE: If you add a new config to pass through to here, be sure to test it in a real
         // application. Since we filter out some configurations, we may have to explicitly copy
         // them over when we construct the Consumer.
         streamsConfig = new ClientUtils.QuietStreamsConfig(configs);
-        internalConfigs = configs;
+        assignmentConfigs = new AssignmentConfigs(streamsConfig);
 
         // Setting the logger with the passed in client thread name
         logPrefix = String.format("stream-thread [%s] ", streamsConfig.getString(CommonClientConfigs.CLIENT_ID_CONFIG));
@@ -84,6 +85,22 @@ public final class AssignorConfiguration {
                 taskAssignorClass = HighAvailabilityTaskAssignor.class.getName();
             } else {
                 taskAssignorClass = o;
+            }
+        }
+
+        {
+            final Object o = configs.get(InternalConfig.ASSIGNMENT_LISTENER);
+
+            if (o == null) {
+                assignmentListener = stable -> { };
+            } else if (o instanceof AssignmentListener) {
+                assignmentListener = (AssignmentListener) o;
+            } else {
+                final KafkaException fatalException = new KafkaException(
+                    String.format("%s is not an instance of %s", o.getClass().getName(), AssignmentListener.class.getName())
+                );
+                log.error(fatalException.getMessage(), fatalException);
+                throw fatalException;
             }
         }
     }
@@ -224,7 +241,7 @@ public final class AssignorConfiguration {
     }
 
     public AssignmentConfigs assignmentConfigs() {
-        return new AssignmentConfigs(streamsConfig);
+        return assignmentConfigs;
     }
 
     public TaskAssignor taskAssignor() {
@@ -239,20 +256,7 @@ public final class AssignorConfiguration {
     }
 
     public AssignmentListener assignmentListener() {
-        final Object o = internalConfigs.get(InternalConfig.ASSIGNMENT_LISTENER);
-        if (o == null) {
-            return stable -> { };
-        }
-
-        if (!(o instanceof AssignmentListener)) {
-            final KafkaException fatalException = new KafkaException(
-                String.format("%s is not an instance of %s", o.getClass().getName(), AssignmentListener.class.getName())
-            );
-            log.error(fatalException.getMessage(), fatalException);
-            throw fatalException;
-        }
-
-        return (AssignmentListener) o;
+        return assignmentListener;
     }
 
     public interface AssignmentListener {

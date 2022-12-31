@@ -23,6 +23,7 @@ import org.apache.kafka.clients.admin.CreateTopicsResult;
 import org.apache.kafka.clients.admin.DeleteTopicsResult;
 import org.apache.kafka.clients.admin.DescribeConfigsResult;
 import org.apache.kafka.clients.admin.DescribeTopicsResult;
+import org.apache.kafka.clients.admin.NewPartitions;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -51,6 +52,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -74,6 +76,7 @@ public class InternalTopicManager {
     private final long windowChangeLogAdditionalRetention;
     private final long retryBackOffMs;
     private final long retryTimeoutMs;
+    private final boolean autoscalingEnabled;
 
     private final Map<String, String> defaultTopicConfigs = new HashMap<>();
 
@@ -89,6 +92,7 @@ public class InternalTopicManager {
         replicationFactor = streamsConfig.getInt(StreamsConfig.REPLICATION_FACTOR_CONFIG).shortValue();
         windowChangeLogAdditionalRetention = streamsConfig.getLong(StreamsConfig.WINDOW_STORE_CHANGE_LOG_ADDITIONAL_RETENTION_MS_CONFIG);
         retryBackOffMs = streamsConfig.getLong(StreamsConfig.RETRY_BACKOFF_MS_CONFIG);
+        autoscalingEnabled = streamsConfig.getBoolean(StreamsConfig.PARTITION_AUTOSCALING_ENABLED_CONFIG);
         final Map<String, Object> consumerConfig = streamsConfig.getMainConsumerConfigs("dummy", "dummy", -1);
         // need to add mandatory configs; otherwise `QuietConsumerConfig` throws
         consumerConfig.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
@@ -380,7 +384,10 @@ public class InternalTopicManager {
      *
      * If a topic does not exist creates a new topic.
      * If a topic with the correct number of partitions exists ignores it.
-     * If a topic exists already but has different number of partitions we fail and throw exception requesting user to reset the app before restarting again.
+     * If a topic exists already but has different number of partitions, then:
+     *   if autoscaling is enabled & the partition count is too small, we add more to scale the topic to match
+     *   else, we fail and throw exception requesting user to reset the app before restarting again.
+     *
      * @return the set of topics which had to be newly created
      */
     public Set<String> makeReady(final Map<String, InternalTopicConfig> topics) {
@@ -396,7 +403,9 @@ public class InternalTopicManager {
 
         while (!topicsNotReady.isEmpty()) {
             final Set<String> tempUnknownTopics = new HashSet<>();
-            topicsNotReady = validateTopics(topicsNotReady, topics, tempUnknownTopics);
+
+            final Map<String, NewPartitions> topicsToNewPartitionCount = validateTopics(topicsNotReady, topics, tempUnknownTopics);
+
             newlyCreatedTopics.addAll(topicsNotReady);
 
             if (!topicsNotReady.isEmpty()) {
@@ -428,56 +437,7 @@ public class InternalTopicManager {
                 // are temporarily not available, not that they do not exist; in this case
                 // the new topics to create may be empty and hence we can skip here
                 if (!newTopics.isEmpty()) {
-                    final CreateTopicsResult createTopicsResult = adminClient.createTopics(newTopics);
-
-                    for (final Map.Entry<String, KafkaFuture<Void>> createTopicResult : createTopicsResult.values().entrySet()) {
-                        final String topicName = createTopicResult.getKey();
-                        try {
-                            createTopicResult.getValue().get();
-                            topicsNotReady.remove(topicName);
-                        } catch (final InterruptedException fatalException) {
-                            // this should not happen; if it ever happens it indicate a bug
-                            Thread.currentThread().interrupt();
-                            log.error(INTERRUPTED_ERROR_MESSAGE, fatalException);
-                            throw new IllegalStateException(INTERRUPTED_ERROR_MESSAGE, fatalException);
-                        } catch (final ExecutionException executionException) {
-                            final Throwable cause = executionException.getCause();
-                            if (cause instanceof TopicExistsException) {
-                                // This topic didn't exist earlier or its leader not known before; just retain it for next round of validation.
-                                log.info(
-                                        "Could not create topic {}. Topic is probably marked for deletion (number of partitions is unknown).\n"
-                                                +
-                                                "Will retry to create this topic in {} ms (to let broker finish async delete operation first).\n"
-                                                +
-                                                "Error message was: {}", topicName, retryBackOffMs,
-                                        cause.toString());
-                            } else {
-                                log.error("Unexpected error during topic creation for {}.\n" +
-                                        "Error message was: {}", topicName, cause.toString());
-
-                                if (cause instanceof UnsupportedVersionException) {
-                                    final String errorMessage = cause.getMessage();
-                                    if (errorMessage != null &&
-                                            errorMessage.startsWith("Creating topics with default partitions/replication factor are only supported in CreateTopicRequest version 4+")) {
-
-                                        throw new StreamsException(String.format(
-                                                "Could not create topic %s, because brokers don't support configuration replication.factor=-1."
-                                                        + " You can change the replication.factor config or upgrade your brokers to version 2.4 or newer to avoid this error.",
-                                                topicName)
-                                        );
-                                    }
-                                } else {
-                                    throw new StreamsException(
-                                            String.format("Could not create topic %s.", topicName),
-                                            cause
-                                    );
-                                }
-                            }
-                        } catch (final TimeoutException retriableException) {
-                            log.error("Creating topic {} timed out.\n" +
-                                    "Error message was: {}", topicName, retriableException.toString());
-                        }
-                    }
+                    createNewTopics(newTopics, topicsNotReady);
                 }
             }
 
@@ -502,6 +462,59 @@ public class InternalTopicManager {
         log.debug("Completed validating internal topics and created {}", newlyCreatedTopics);
 
         return newlyCreatedTopics;
+    }
+
+    private void createNewTopics(final Set<NewTopic> newTopics, final Set<String> topicsNotReady) {
+        final CreateTopicsResult createTopicsResult = adminClient.createTopics(newTopics);
+
+        for (final Map.Entry<String, KafkaFuture<Void>> createTopicResult : createTopicsResult.values().entrySet()) {
+            final String topicName = createTopicResult.getKey();
+            try {
+                createTopicResult.getValue().get();
+                topicsNotReady.remove(topicName);
+            } catch (final InterruptedException fatalException) {
+                // this should not happen; if it ever happens it indicate a bug
+                Thread.currentThread().interrupt();
+                log.error(INTERRUPTED_ERROR_MESSAGE, fatalException);
+                throw new IllegalStateException(INTERRUPTED_ERROR_MESSAGE, fatalException);
+            } catch (final ExecutionException executionException) {
+                final Throwable cause = executionException.getCause();
+                if (cause instanceof TopicExistsException) {
+                    // This topic didn't exist earlier or its leader not known before; just retain it for next round of validation.
+                    log.info(
+                        "Could not create topic {}. Topic is probably marked for deletion (number of partitions is unknown).\n"
+                            +
+                            "Will retry to create this topic in {} ms (to let broker finish async delete operation first).\n"
+                            +
+                            "Error message was: {}", topicName, retryBackOffMs,
+                        cause.toString());
+                } else {
+                    log.error("Unexpected error during topic creation for {}.\n" +
+                                  "Error message was: {}", topicName, cause.toString());
+
+                    if (cause instanceof UnsupportedVersionException) {
+                        final String errorMessage = cause.getMessage();
+                        if (errorMessage != null &&
+                            errorMessage.startsWith("Creating topics with default partitions/replication factor are only supported in CreateTopicRequest version 4+")) {
+
+                            throw new StreamsException(String.format(
+                                "Could not create topic %s, because brokers don't support configuration replication.factor=-1."
+                                    + " You can change the replication.factor config or upgrade your brokers to version 2.4 or newer to avoid this error.",
+                                topicName)
+                            );
+                        }
+                    } else {
+                        throw new StreamsException(
+                            String.format("Could not create topic %s.", topicName),
+                            cause
+                        );
+                    }
+                }
+            } catch (final TimeoutException retriableException) {
+                log.error("Creating topic {} timed out.\n" +
+                              "Error message was: {}", topicName, retriableException.toString());
+            }
+        }
     }
 
     /**
@@ -554,40 +567,52 @@ public class InternalTopicManager {
     }
 
     /**
-     * Check the existing topics to have correct number of partitions; and return the remaining topics that needs to be created
+     * Remove any pre-existing topics from {@code topicsNotReady} and validate their number of partitions to make
+     * sure they match the expected count or need to have partitions added when autoscaling is enabled
+     *
+     * @return the map of topics needing to be autoscaled to their new total partition count
      */
-    private Set<String> validateTopics(final Set<String> topicsToValidate,
-                                       final Map<String, InternalTopicConfig> topicsMap,
-                                       final Set<String> tempUnknownTopics) {
-        if (!topicsMap.keySet().containsAll(topicsToValidate)) {
+    private Map<String, NewPartitions> validateTopics(final Set<String> topicsNotReady,
+                                                      final Map<String, InternalTopicConfig> topicsMap,
+                                                      final Set<String> tempUnknownTopics) {
+        if (!topicsMap.keySet().containsAll(topicsNotReady)) {
             throw new IllegalStateException("The topics map " + topicsMap.keySet() + " does not contain all the topics " +
-                topicsToValidate + " trying to validate.");
+                topicsNotReady + " trying to validate.");
         }
+        final Map<String, NewPartitions> topicsToNewPartitionCount = new HashMap<>();
+        final Map<String, Integer> existedTopicPartition = getNumPartitions(topicsNotReady, tempUnknownTopics);
 
-        final Map<String, Integer> existedTopicPartition = getNumPartitions(topicsToValidate, tempUnknownTopics);
-
-        final Set<String> topicsToCreate = new HashSet<>();
-        for (final String topicName : topicsToValidate) {
+        final Iterator<String> topicsNotReadyIter = topicsNotReady.iterator();
+        while (topicsNotReadyIter.hasNext()) {
+            final String topicName = topicsNotReadyIter.next();
             final Optional<Integer> numberOfPartitions = topicsMap.get(topicName).numberOfPartitions();
             if (!numberOfPartitions.isPresent()) {
                 log.error("Found undefined number of partitions for topic {}", topicName);
                 throw new StreamsException("Topic " + topicName + " number of partitions not defined");
             }
+
             if (existedTopicPartition.containsKey(topicName)) {
-                if (!existedTopicPartition.get(topicName).equals(numberOfPartitions.get())) {
-                    final String errorMsg = String.format("Existing internal topic %s has invalid partitions: " +
-                            "expected: %d; actual: %d. " +
-                            "Use 'kafka.tools.StreamsResetter' tool to clean up invalid topics before processing.",
-                        topicName, numberOfPartitions.get(), existedTopicPartition.get(topicName));
-                    log.error(errorMsg);
-                    throw new StreamsException(errorMsg);
+                topicsNotReadyIter.remove();
+
+                final int existingNumberOfPartitions = existedTopicPartition.get(topicName);
+                if (existingNumberOfPartitions != numberOfPartitions.get()) {
+                    if (autoscalingEnabled && existingNumberOfPartitions < numberOfPartitions.get()) {
+                        log.debug("Existing topic {} has {} partitions and will be autoscaled to {} partitions",
+                                  topicName, existingNumberOfPartitions, numberOfPartitions.get());
+                        topicsToNewPartitionCount.put(topicName, NewPartitions.increaseTo(numberOfPartitions.get()));
+                    } else {
+                        final String errorMsg = String.format(
+                            "Existing internal topic %s has invalid partitions: expected: %d; actual: %d. " +
+                                "Use 'kafka.tools.StreamsResetter' tool to clean up invalid topics before processing.",
+                            topicName, numberOfPartitions.get(), existedTopicPartition.get(topicName)
+                        );
+                        log.error(errorMsg);
+                        throw new StreamsException(errorMsg);
+                    }
                 }
-            } else {
-                topicsToCreate.add(topicName);
             }
         }
-
-        return topicsToCreate;
+        return topicsToNewPartitionCount;
     }
 
     /**
