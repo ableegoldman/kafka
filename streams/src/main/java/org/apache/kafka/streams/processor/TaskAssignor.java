@@ -14,9 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.kafka.streams.processor.internals.assignment;
+package org.apache.kafka.streams.processor;
 
-import org.apache.kafka.streams.processor.TaskId;
+import org.apache.kafka.streams.processor.internals.assignment.AssignorConfiguration.AssignmentConfigs;
+import org.apache.kafka.streams.processor.internals.assignment.ClientState;
 
 import java.util.Map;
 import java.util.Set;
@@ -29,5 +30,5 @@ public interface TaskAssignor {
     boolean assign(Map<UUID, ClientState> clients,
                    Set<TaskId> allTaskIds,
                    Set<TaskId> statefulTaskIds,
-                   AssignorConfiguration.AssignmentConfigs configs);
+                   AssignmentConfigs configs);
 }
