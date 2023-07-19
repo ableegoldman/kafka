@@ -120,7 +120,7 @@ public class TimeWindowedCogroupedKStreamImpl<K, V, W extends Window> extends Ab
                         + "]");
             }
             if (materialized.storeProvider() != null) {
-                supplier = materialized.storeProvider().timestampedWindowStore(
+                supplier = materialized.storeProvider().windowStore(
                     materialized.storeName(),
                     Duration.ofMillis(retentionPeriod),
                     Duration.ofMillis(windows.size()),

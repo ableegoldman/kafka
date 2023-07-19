@@ -114,7 +114,7 @@ public class SlidingWindowedCogroupedKStreamImpl<K, V> extends AbstractStream<K,
                     + "]");
             }
             if (materialized.storeProvider() != null) {
-                supplier = materialized.storeProvider().timestampedWindowStore(
+                supplier = materialized.storeProvider().windowStore(
                     materialized.storeName(),
                     Duration.ofMillis(retentionPeriod),
                     Duration.ofMillis(windows.timeDifferenceMs()),
