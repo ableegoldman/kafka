@@ -526,13 +526,20 @@ public class StreamsConfig extends AbstractConfig {
     public static final String DEFAULT_PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG = "default.production.exception.handler";
     private static final String DEFAULT_PRODUCTION_EXCEPTION_HANDLER_CLASS_DOC = "Exception handling class that implements the <code>org.apache.kafka.streams.errors.ProductionExceptionHandler</code> interface.";
 
-    /** {@code default.dsl.store} */
+    /** {@code default.dsl.store}
+     * @deprecated use {@link #DEFAULT_DSL_STORE_PROVIDER_CONFIG} */
     @SuppressWarnings("WeakerAccess")
+    @Deprecated
     public static final String DEFAULT_DSL_STORE_CONFIG = "default.dsl.store";
     public static final String DEFAULT_DSL_STORE_DOC = "The default state store type used by DSL operators.";
 
     public static final String ROCKS_DB = "rocksDB";
     public static final String IN_MEMORY = "in_memory";
+
+    /** {@code default.dsl.store} */
+    @SuppressWarnings("WeakerAccess")
+    public static final String DEFAULT_DSL_STORE_PROVIDER_CONFIG = "default.dsl.store.provider";
+    public static final String DEFAULT_DSL_STORE_PROVIDER_DOC = "Default state store provider used by DSL operators. Must implement the <code>org.apache.kafka.streams.state.DSLStoreProvider</code> interface.";
 
     /** {@code default.windowed.key.serde.inner} */
     @SuppressWarnings("WeakerAccess")
@@ -963,6 +970,11 @@ public class StreamsConfig extends AbstractConfig {
                     in(ROCKS_DB, IN_MEMORY),
                     Importance.LOW,
                     DEFAULT_DSL_STORE_DOC)
+            .define(DEFAULT_DSL_STORE_PROVIDER_CONFIG,
+                    Type.CLASS,
+                    null,
+                    Importance.LOW,
+                    DEFAULT_DSL_STORE_PROVIDER_DOC)
             .define(DEFAULT_CLIENT_SUPPLIER_CONFIG,
                     Type.CLASS,
                     DefaultKafkaClientSupplier.class.getName(),

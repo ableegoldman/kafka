@@ -21,10 +21,12 @@ import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.streams.state.internals.InMemoryKeyValueBytesStoreSupplier;
 import org.apache.kafka.streams.state.internals.InMemorySessionBytesStoreSupplier;
+import org.apache.kafka.streams.state.internals.InMemoryStoreProvider;
 import org.apache.kafka.streams.state.internals.InMemoryWindowBytesStoreSupplier;
 import org.apache.kafka.streams.state.internals.KeyValueStoreBuilder;
 import org.apache.kafka.streams.state.internals.MemoryNavigableLRUCache;
 import org.apache.kafka.streams.state.internals.RocksDBKeyValueBytesStoreSupplier;
+import org.apache.kafka.streams.state.internals.RocksDBStoreProvider;
 import org.apache.kafka.streams.state.internals.RocksDbSessionBytesStoreSupplier;
 import org.apache.kafka.streams.state.internals.RocksDbVersionedKeyValueBytesStoreSupplier;
 import org.apache.kafka.streams.state.internals.RocksDbWindowBytesStoreSupplier;
@@ -562,5 +564,13 @@ public final class Stores {
                                                                               final Serde<V> valueSerde) {
         Objects.requireNonNull(supplier, "supplier cannot be null");
         return new SessionStoreBuilder<>(supplier, keySerde, valueSerde, Time.SYSTEM);
+    }
+
+    public static DSLStoreProvider rocksDB() {
+        return new RocksDBStoreProvider();
+    }
+
+    public static DSLStoreProvider inMemory() {
+        return new InMemoryStoreProvider();
     }
 }

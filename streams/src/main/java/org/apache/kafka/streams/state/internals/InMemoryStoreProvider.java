@@ -7,7 +7,7 @@ import org.apache.kafka.streams.state.SessionBytesStoreSupplier;
 import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.WindowBytesStoreSupplier;
 
-public class RocksDBStoreProvider implements DSLStoreProvider {
+public class InMemoryStoreProvider implements DSLStoreProvider {
 
     @Override
     public KeyValueBytesStoreSupplier keyValueStore(final String name) {
