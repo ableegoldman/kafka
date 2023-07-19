@@ -65,6 +65,7 @@ public class MaterializedTest {
         assertEquals(e.getMessage(), "supplier can't be null");
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     public void shouldThrowNullPointerIfStoreTypeIsNull() {
         final NullPointerException e = assertThrows(NullPointerException.class,
@@ -89,6 +90,7 @@ public class MaterializedTest {
         assertEquals(e.getMessage(), "Retention must not be negative.");
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     public void shouldThrowIllegalArgumentExceptionIfStoreSupplierAndStoreTypeBothSet() {
         final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,

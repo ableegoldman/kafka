@@ -74,6 +74,7 @@ public class MaterializedInternalTest {
         assertThat(materialized.storeName(), equalTo(storeName));
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     public void shouldUseStoreTypeWhenProvidedViaTopologyConfig() {
         final Properties topologyOverrides = new Properties();

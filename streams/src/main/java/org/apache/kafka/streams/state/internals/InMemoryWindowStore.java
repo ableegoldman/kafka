@@ -88,6 +88,8 @@ public class InMemoryWindowStore implements WindowStore<Bytes, byte[]> {
                                final boolean retainDuplicates,
                                final String metricScope) {
         this.name = name;
+        System.out.println("IM store with retainDups = " + retainDuplicates);
+
         this.retentionPeriod = retentionPeriod;
         this.windowSize = windowSize;
         this.retainDuplicates = retainDuplicates;

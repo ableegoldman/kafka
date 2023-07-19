@@ -43,6 +43,7 @@ public class RocksDBWindowStore
                        final boolean retainDuplicates,
                        final long windowSize) {
         super(bytesStore);
+        System.out.println("Rocksdb store with retainDups = " + retainDuplicates);
         this.retainDuplicates = retainDuplicates;
         this.windowSize = windowSize;
     }
