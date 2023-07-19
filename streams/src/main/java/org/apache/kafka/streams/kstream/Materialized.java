@@ -86,6 +86,10 @@ public class Materialized<K, V, S extends StateStore> {
         this.storeType = storeType;
     }
 
+    private Materialized(final DSLStoreProvider storeProvider) {
+        this.storeProvider = storeProvider;
+    }
+
     /**
      * Copy constructor.
      * @param materialized  the {@link Materialized} instance to copy.
@@ -100,6 +104,21 @@ public class Materialized<K, V, S extends StateStore> {
         this.topicConfig = materialized.topicConfig;
         this.retention = materialized.retention;
         this.storeType = materialized.storeType;
+        this.storeProvider = materialized.storeProvider;
+    }
+
+    /**
+     * Materialize a {@link StateStore} with the given {@link DSLStoreProvider}.
+     *
+     * @param storeProvider  the type of the state store
+     * @param <K>       key type of the store
+     * @param <V>       value type of the store
+     * @param <S>       type of the {@link StateStore}
+     * @return a new {@link Materialized} instance with the given store provider
+     */
+    public static <K, V, S extends StateStore> Materialized<K, V, S> as(final DSLStoreProvider storeProvider) {
+        Objects.requireNonNull(storeProvider, "store provider can't be null");
+        return new Materialized<>(storeProvider);
     }
 
     /**
@@ -110,7 +129,10 @@ public class Materialized<K, V, S extends StateStore> {
      * @param <V>       value type of the store
      * @param <S>       type of the {@link StateStore}
      * @return a new {@link Materialized} instance with the given storeType
+     *
+     * @deprecated Use {@link #as(DSLStoreProvider)} instead
      */
+    @Deprecated
     public static <K, V, S extends StateStore> Materialized<K, V, S> as(final StoreType storeType) {
         Objects.requireNonNull(storeType, "store type can't be null");
         return new Materialized<>(storeType);
@@ -294,13 +316,32 @@ public class Materialized<K, V, S extends StateStore> {
      * @param storeType  the store type {@link StoreType} to use.
      * @return itself
      * @throws IllegalArgumentException if store supplier is also pre-configured
+     *
+     * @deprecated Use {@link #withStoreType(DSLStoreProvider)} instead
      */
+    @Deprecated
     public Materialized<K, V, S> withStoreType(final StoreType storeType) throws IllegalArgumentException {
         Objects.requireNonNull(storeType, "store type can't be null");
         if (storeSupplier != null) {
             throw new IllegalArgumentException("Cannot set store type when store supplier is pre-configured.");
         }
         this.storeType = storeType;
+        return this;
+    }
+
+    /**
+     * Set the type of the materialized {@link StateStore}.
+     *
+     * @param storeProvider  the store provider {@link DSLStoreProvider} to use.
+     * @return itself
+     * @throws IllegalArgumentException if store supplier is also pre-configured
+     */
+    public Materialized<K, V, S> withStoreType(final DSLStoreProvider storeProvider) throws IllegalArgumentException {
+        Objects.requireNonNull(storeProvider, "store provider can't be null");
+        if (storeSupplier != null) {
+            throw new IllegalArgumentException("Cannot set store provider when store supplier is pre-configured.");
+        }
+        this.storeProvider = storeProvider;
         return this;
     }
 }

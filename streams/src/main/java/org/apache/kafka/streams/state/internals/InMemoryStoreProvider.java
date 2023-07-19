@@ -15,8 +15,11 @@ public class InMemoryStoreProvider implements DSLStoreProvider {
     }
 
     @Override
-    public WindowBytesStoreSupplier windowStore(final String name, final Duration retentionPeriod, final Duration windowSize) {
-        return Stores.persistentTimestampedWindowStore(name, retentionPeriod, windowSize, false);
+    public WindowBytesStoreSupplier windowStore(final String name,
+                                                final Duration retentionPeriod,
+                                                final Duration windowSize,
+                                                final boolean retainDuplicates) {
+        return Stores.persistentTimestampedWindowStore(name, retentionPeriod, windowSize, retainDuplicates);
     }
 
     @Override
