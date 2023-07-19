@@ -18,6 +18,7 @@
 package org.apache.kafka.streams.kstream;
 
 import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.streams.state.DSLStoreProvider;
 import org.apache.kafka.streams.state.WindowBytesStoreSupplier;
 
 import java.util.HashMap;
@@ -37,6 +38,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
     protected final Serde<V2> otherValueSerde;
     protected final WindowBytesStoreSupplier thisStoreSupplier;
     protected final WindowBytesStoreSupplier otherStoreSupplier;
+    protected final DSLStoreProvider storeProvider; // TODO(KIP-954): finish implementing this!
     protected final String name;
     protected final String storeName;
     protected final boolean loggingEnabled;
@@ -48,6 +50,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             streamJoined.otherValueSerde,
             streamJoined.thisStoreSupplier,
             streamJoined.otherStoreSupplier,
+            streamJoined.storeProvider,
             streamJoined.name,
             streamJoined.storeName,
             streamJoined.loggingEnabled,
@@ -59,6 +62,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
                          final Serde<V2> otherValueSerde,
                          final WindowBytesStoreSupplier thisStoreSupplier,
                          final WindowBytesStoreSupplier otherStoreSupplier,
+                         final DSLStoreProvider storeProvider,
                          final String name,
                          final String storeName,
                          final boolean loggingEnabled,
@@ -68,6 +72,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
         this.otherValueSerde = otherValueSerde;
         this.thisStoreSupplier = thisStoreSupplier;
         this.otherStoreSupplier = otherStoreSupplier;
+        this.storeProvider = storeProvider;
         this.name = name;
         this.storeName = storeName;
         this.loggingEnabled = loggingEnabled;
@@ -96,6 +101,33 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             otherStoreSupplier,
             null,
             null,
+            null,
+            true,
+            new HashMap<>()
+        );
+    }
+
+    /**
+     * Creates a StreamJoined instance with the given {@link DSLStoreProvider}. The store provider
+     * will be used to get all the state stores in this operation that do not otherwise have an
+     * explicitly configured {@link org.apache.kafka.streams.state.StoreSupplier}.
+     *
+     * @param storeProvider       the store provider that will be used for all unconfigured state stores
+     * @param <K>                 the key type
+     * @param <V1>                this value type
+     * @param <V2>                other value type
+     * @return                    {@link StreamJoined} instance
+     */
+    public static <K, V1, V2> StreamJoined<K, V1, V2> with(final DSLStoreProvider storeProvider) {
+        return new StreamJoined<>(
+            null,
+            null,
+            null,
+            null,
+            null,
+            storeProvider,
+            null,
+            null,
             true,
             new HashMap<>()
         );
@@ -120,6 +152,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
      */
     public static <K, V1, V2> StreamJoined<K, V1, V2> as(final String storeName) {
         return new StreamJoined<>(
+            null,
             null,
             null,
             null,
@@ -156,6 +189,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             null,
             null,
             null,
+            null,
             true,
             new HashMap<>()
         );
@@ -174,6 +208,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             otherValueSerde,
             thisStoreSupplier,
             otherStoreSupplier,
+            storeProvider,
             name,
             storeName,
             loggingEnabled,
@@ -198,6 +233,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             otherValueSerde,
             thisStoreSupplier,
             otherStoreSupplier,
+            storeProvider,
             name,
             storeName,
             loggingEnabled,
@@ -217,6 +253,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             otherValueSerde,
             thisStoreSupplier,
             otherStoreSupplier,
+            storeProvider,
             name,
             storeName,
             loggingEnabled,
@@ -236,6 +273,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             otherValueSerde,
             thisStoreSupplier,
             otherStoreSupplier,
+            storeProvider,
             name,
             storeName,
             loggingEnabled,
@@ -255,6 +293,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             otherValueSerde,
             thisStoreSupplier,
             otherStoreSupplier,
+            storeProvider,
             name,
             storeName,
             loggingEnabled,
@@ -277,6 +316,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             otherValueSerde,
             thisStoreSupplier,
             otherStoreSupplier,
+            storeProvider,
             name,
             storeName,
             loggingEnabled,
@@ -299,6 +339,29 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             otherValueSerde,
             thisStoreSupplier,
             otherStoreSupplier,
+            storeProvider,
+            name,
+            storeName,
+            loggingEnabled,
+            topicConfig
+        );
+    }
+
+    /**
+     * Configure with the provided {@link DSLStoreProvider} for all state stores that are not
+     * configured with a {@link org.apache.kafka.streams.state.StoreSupplier} already.
+     *
+     * @param storeProvider  the store provider to use for all unconfigured state stores
+     * @return            a new {@link StreamJoined} configured with this store provider
+     */
+    public StreamJoined<K, V1, V2> withStoreProvider(final DSLStoreProvider storeProvider) {
+        return new StreamJoined<>(
+            keySerde,
+            valueSerde,
+            otherValueSerde,
+            thisStoreSupplier,
+            otherStoreSupplier,
+            storeProvider,
             name,
             storeName,
             loggingEnabled,
@@ -321,6 +384,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             otherValueSerde,
             thisStoreSupplier,
             otherStoreSupplier,
+            storeProvider,
             name,
             storeName,
             true,
@@ -339,6 +403,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             otherValueSerde,
             thisStoreSupplier,
             otherStoreSupplier,
+            storeProvider,
             name,
             storeName,
             false,
@@ -354,6 +419,7 @@ public class StreamJoined<K, V1, V2> implements NamedOperation<StreamJoined<K, V
             ", otherValueSerde=" + otherValueSerde +
             ", thisStoreSupplier=" + thisStoreSupplier +
             ", otherStoreSupplier=" + otherStoreSupplier +
+            ", storeProvider=" + storeProvider +
             ", name='" + name + '\'' +
             ", storeName='" + storeName + '\'' +
             ", loggingEnabled=" + loggingEnabled +
